@@ -1,0 +1,19 @@
+---
+title: Getting Started
+---
+
+## About This Guide
+
+This documentation provides comprehensive guidance for building GPU-accelerated applications using WebGPU and TypeGPU in TypeScript. It's designed for intermediate TypeScript developers who want to harness GPU computing power in web applications, covering everything from WebGPU API fundamentals to TypeGPU's type-safe abstractions for shader development.
+
+WebGPU is the modern successor to WebGL, offering compute shader support, improved performance, and alignment with native graphics APIs like Vulkan, Metal, and Direct3D 12. TypeGPU is a type-safe toolkit that simplifies WebGPU development by letting you write shaders in TypeScript with full type checking and automatic WGSL generation.
+
+## Docs for LLMs
+
+This documentation follows the [llms.txt](https://llmstxt.org/) convention, making it accessible to large language models and their applications for code generation, debugging, and learning. You can prompt LLMs with specific questions about WebGPU and TypeGPU concepts, request code snippets, or seek explanations for complex topics covered in this guide.
+
+Currently, we have the following root-level files:
+
+- [/llms.txt](/llms.txt) — a listing of the available files
+- [/llms-full.txt ](/llms-full.txt) — complete documentation for WebGPU and TypeGPU
+- [/llms-small.txt](/llms-small.txt) — compressed documentation for use with smaller context windows

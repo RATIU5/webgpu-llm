@@ -1,0 +1,26 @@
+{
+	"name": "test",
+	"type": "module",
+	"version": "0.0.1",
+	"scripts": {
+		"dev": "astro dev",
+		"start": "astro dev",
+		"build": "astro build",
+		"preview": "astro preview",
+		"astro": "astro",
+		"typecheck": "tsc --noEmit",
+		"check": "biome check .",
+		"check:write": "biome check --write ."
+	},
+	"dependencies": {
+		"@astrojs/node": "^9.5.1",
+		"@astrojs/starlight": "^0.37.1",
+		"astro": "^5.6.1",
+		"rate-limiter-flexible": "^9.0.1",
+		"sharp": "^0.34.2",
+		"starlight-llms-txt": "^0.6.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.3.10"
+	}
+}

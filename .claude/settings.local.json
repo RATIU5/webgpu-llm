@@ -1,0 +1,5 @@
+{
+	"permissions": {
+		"allow": ["WebFetch(domain:pagefind.app)", "WebFetch(domain:github.com)"]
+	}
+}
