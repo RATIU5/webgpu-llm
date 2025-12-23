@@ -1,5 +1,14 @@
 {
-	"extends": "astro/tsconfigs/strict",
-	"include": [".astro/types.d.ts", "**/*"],
-	"exclude": ["dist"]
+	"compilerOptions": {
+		"declaration": true,
+		"emitDeclarationOnly": true,
+		"strict": true,
+		"moduleResolution": "nodenext",
+		"target": "ES2022",
+		"module": "NodeNext",
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"verbatimModuleSyntax": true,
+		"stripInternal": true
+	}
 }
