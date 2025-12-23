@@ -1,17 +1,10 @@
 {
-  "extends": "./tsconfig.base.json",
-  "include": [
-    "scripts",
-    "eslint.config.mjs",
-    "tsup.config.ts",
-    "vitest.config.ts"
-  ],
-  "compilerOptions": {
-    "types": [
-      "node"
-    ],
-    "tsBuildInfoFile": ".tsbuildinfo/scripts.tsbuildinfo",
-    "rootDir": ".",
-    "noEmit": true
-  }
+	"extends": "./tsconfig.base.json",
+	"include": ["scripts", "tsup.config.ts"],
+	"compilerOptions": {
+		"types": ["node"],
+		"tsBuildInfoFile": ".tsbuildinfo/scripts.tsbuildinfo",
+		"rootDir": ".",
+		"noEmit": true
+	}
 }

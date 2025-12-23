@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (do not publish)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI
+        run: pnpm build:cli
+
+      - name: Create Release Pull Request or Publish
+        if: ${{ !inputs.dry_run }}
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          publish: pnpm changeset publish
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry Run - Version
+        if: ${{ inputs.dry_run }}
+        run: pnpm changeset version
+
+      - name: Dry Run - Show changes
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "=== Package versions that would be published ==="
+          cat packages/search-cli/package.json | grep -E '"(name|version)"'
+          echo ""
+          echo "=== Changeset status ==="
+          pnpm changeset status
