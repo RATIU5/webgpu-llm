@@ -14,7 +14,7 @@
     "build:docs": "pnpm --filter docs build",
     "build:cli": "pnpm --filter @ratiu5/starlight-search-cli build",
     "preview:docs": "pnpm --filter docs preview",
-    "typecheck": "pnpm typecheck:cli && typecheck:docs",
+    "typecheck": "pnpm typecheck:cli && pnpm typecheck:docs",
     "typecheck:cli": "pnpm --filter @ratiu5/starlight-search-cli typecheck",
     "typecheck:docs": "pnpm --filter docs typecheck",
     "check": "biome check .",
