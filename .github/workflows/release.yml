@@ -62,6 +62,22 @@ jobs:
       - name: Build CLI
         run: pnpm build:cli
 
+      - name: Debug OIDC Environment
+        run: |
+          echo "Checking OIDC environment variables:"
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:-not set}"
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+SET}"
+          echo "NPM version: $(npm --version)"
+          echo "Node version: $(node --version)"
+
+      - name: Test OIDC Token Request
+        run: |
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "OIDC is available"
+          else
+            echo "OIDC is NOT available - check permissions"
+          fi
+
       - name: Create Release Pull Request or Publish
         if: ${{ !inputs.dry_run }}
         id: changesets
