@@ -19,7 +19,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
-
+  id-token: write
 jobs:
   release:
     name: Release
@@ -63,7 +63,6 @@ jobs:
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Dry Run - Version
         if: ${{ inputs.dry_run }}
