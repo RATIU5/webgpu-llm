@@ -1,16 +1,16 @@
 {
-	"compilerOptions": {
-		"declaration": true,
-		"emitDeclarationOnly": true,
-		"strict": true,
-		"moduleResolution": "nodenext",
-		"target": "ES2022",
-		"module": "NodeNext",
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"verbatimModuleSyntax": true,
-		"stripInternal": true
-	},
-	"include": [],
-	"exclude": ["node_modules", "**/dist", "**/.astro"]
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "strict": true,
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "module": "NodeNext",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "stripInternal": true
+  },
+  "include": [],
+  "exclude": ["node_modules", "**/dist", "**/.astro"]
 }
