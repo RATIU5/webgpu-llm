@@ -1,6 +1,5 @@
 // @ts-check
-
-import node from "@astrojs/node";
+import cloudflare from "@astrojs/cloudflare";
 import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 import starlightLlmsTxt from "starlight-llms-txt";
@@ -8,9 +7,7 @@ import starlightLlmsTxt from "starlight-llms-txt";
 // https://astro.build/config
 export default defineConfig({
   site: "http://localhost:4321",
-  adapter: node({
-    mode: "standalone",
-  }),
+  adapter: cloudflare(),
   integrations: [
     starlight({
       title: "RATIU5' TypeGPU Docs",
