@@ -1,8 +1,20 @@
 import { Args, Command, Options } from "@effect/cli";
+import { FileSystem, Path } from "@effect/platform";
 import { Effect, Layer } from "effect";
 import { makeApiClientLive } from "./HttpService.js";
 import { SearchClient, SearchClientLive } from "./Search.js";
 import { ShowClient, ShowClientLive, ShowInvalidUrl } from "./Show.js";
+
+const getPackageVersion = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const modulePath = yield* path.fromFileUrl(new URL(import.meta.url));
+  const moduleDir = path.dirname(modulePath);
+  const packageJsonPath = path.join(moduleDir, "..", "package.json");
+  const content = yield* fs.readFileString(packageJsonPath);
+  const pkg = JSON.parse(content) as { version: string };
+  return pkg.version;
+});
 
 const command = Command.make("sls");
 
@@ -78,7 +90,12 @@ const commandWithSearch = command.pipe(
   Command.withSubcommands([searchCommand, showCommand]),
 );
 
-export const run = Command.run(commandWithSearch, {
-  name: "Starlight Search",
-  version: "0.0.1",
-});
+export const run = (args: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    const version = yield* getPackageVersion;
+    const cli = Command.run(commandWithSearch, {
+      name: "Starlight Search",
+      version,
+    });
+    yield* cli(args);
+  });
