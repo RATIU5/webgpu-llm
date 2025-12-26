@@ -1,13 +1,13 @@
 // @ts-check
-import cloudflare from "@astrojs/cloudflare";
 import starlight from "@astrojs/starlight";
+import vercelAdapter from "@astrojs/vercel";
 import { defineConfig } from "astro/config";
 import starlightLlmsTxt from "starlight-llms-txt";
 
 // https://astro.build/config
 export default defineConfig({
   site: "http://localhost:4321",
-  adapter: cloudflare(),
+  adapter: vercelAdapter(),
   integrations: [
     starlight({
       title: "RATIU5' TypeGPU Docs",
