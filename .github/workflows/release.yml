@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       dry_run:
@@ -20,6 +17,7 @@ permissions:
   contents: write
   pull-requests: write
   id-token: write
+
 jobs:
   release:
     name: Release
