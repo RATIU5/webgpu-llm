@@ -12,7 +12,7 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/node": "^9.5.1",
+    "@astrojs/cloudflare": "^12.6.12",
     "@astrojs/starlight": "^0.37.1",
     "astro": "^5.6.1",
     "rate-limiter-flexible": "^9.0.1",
