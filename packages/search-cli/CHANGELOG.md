@@ -1,5 +1,11 @@
 # @ratiu5/starlight-search-cli
 
+## 0.0.4
+
+### Patch Changes
+
+- 649a6fd: Add code to read the version number of the CLI from the package.json file
+
 ## 0.0.3
 
 ### Patch Changes
