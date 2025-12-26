@@ -40,32 +40,24 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           registry-url: "https://registry.npmjs.org"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Upgrade npm for OIDC support
-        run: sudo npm install -g npm@latest
 
       - name: Verify npm version
         run: npm --version
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Build CLI
         run: pnpm build:cli
-
-      - name: Debug OIDC Environment
-        run: |
-          echo "Checking OIDC environment variables:"
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:-not set}"
-          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+SET}"
-          echo "NPM version: $(npm --version)"
-          echo "Node version: $(node --version)"
 
       - name: Create Release Pull Request or Publish
         if: ${{ !inputs.dry_run }}
