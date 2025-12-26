@@ -81,6 +81,8 @@ importers:
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.3)(tsx@4.21.0)(yaml@2.8.2)
     publishDirectory: dist
 
+  packages/search-cli/dist: {}
+
 packages:
 
   '@astrojs/check@0.9.6':

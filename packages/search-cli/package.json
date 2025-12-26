@@ -1,68 +1,71 @@
 {
-	"name": "@ratiu5/starlight-search-cli",
-	"version": "0.0.1",
-	"type": "module",
-	"packageManager": "pnpm@10.14.0",
-	"license": "MIT",
-	"description": "Starlight search CLI",
-	"author": "RATIU5",
-	"keywords": [
-		"starlight",
-		"search",
-		"cli",
-		"astro",
-		"documentation"
-	],
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/RATIU5/webgpu-llm",
-		"directory": "packages/search-cli"
-	},
-	"homepage": "https://github.com/RATIU5/webgpu-llm#readme",
-	"bugs": {
-		"url": "https://github.com/RATIU5/webgpu-llm/issues"
-	},
-	"engines": {
-		"node": ">=20.0.0"
-	},
-	"publishConfig": {
-		"access": "public",
-		"directory": "dist"
-	},
-	"main": "./bin.js",
-	"types": "./bin.d.ts",
-	"exports": {
-		".": {
-			"types": "./bin.d.ts",
-			"import": "./bin.js"
-		}
-	},
-	"bin": {
-		"sls": "./bin.js"
-	},
-	"scripts": {
-		"dev": "tsup --watch",
-		"build": "tsup && pnpm copy-package-json",
-		"build:ts": "tsup",
-		"clean": "rimraf dist/*",
-		"check": "tsc -b tsconfig.json",
-		"typecheck": "tsc -b tsconfig.json",
-		"copy-package-json": "tsx scripts/copy-package-json.ts",
-		"prepublishOnly": "pnpm build"
-	},
-	"dependencies": {
-		"@effect/cli": "^0.69.0",
-		"@effect/platform": "^0.90.3",
-		"@effect/platform-node": "^0.96.0",
-		"effect": "^3.17.7"
-	},
-	"devDependencies": {
-		"@effect/language-service": "latest",
-		"@types/node": "^22.5.2",
-		"rimraf": "^6.0.1",
-		"tsup": "^8.2.4",
-		"tsx": "^4.19.1",
-		"typescript": "^5.6.2",
-		"vitest": "^3.2.0"
-	}
+  "name": "@ratiu5/starlight-search-cli",
+  "version": "0.0.1",
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "license": "MIT",
+  "description": "Starlight search CLI",
+  "author": "RATIU5",
+  "keywords": [
+    "starlight",
+    "search",
+    "cli",
+    "astro",
+    "documentation"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RATIU5/webgpu-llm",
+    "directory": "packages/search-cli"
+  },
+  "homepage": "https://github.com/RATIU5/webgpu-llm#readme",
+  "bugs": {
+    "url": "https://github.com/RATIU5/webgpu-llm/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
+  "main": "./bin.js",
+  "types": "./bin.d.ts",
+  "exports": {
+    ".": {
+      "types": "./bin.d.ts",
+      "import": "./bin.js"
+    }
+  },
+  "bin": {
+    "sls": "./bin.js"
+  },
+  "scripts": {
+    "dev": "tsup --watch",
+    "build": "tsup && pnpm copy-package-json",
+    "build:ts": "tsup",
+    "clean": "rimraf dist/*",
+    "check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "copy-package-json": "tsx scripts/copy-package-json.ts",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.69.0",
+    "@effect/platform": "^0.90.3",
+    "@effect/platform-node": "^0.96.0",
+    "effect": "^3.17.7"
+  },
+  "devDependencies": {
+    "@effect/language-service": "latest",
+    "@types/node": "^22.5.2",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.2.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vitest": "^3.2.0"
+  }
 }
