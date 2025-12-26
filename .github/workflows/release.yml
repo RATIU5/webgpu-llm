@@ -40,15 +40,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Update npm for OIDC support
-        run: sudo npm install -g npm@latest
-
-      - name: Verify npm version
-        run: npm --version
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -58,6 +49,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Upgrade npm for OIDC support
+        run: sudo npm install -g npm@latest
+
+      - name: Verify npm version
+        run: npm --version
 
       - name: Build CLI
         run: pnpm build:cli
@@ -69,14 +66,6 @@ jobs:
           echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+SET}"
           echo "NPM version: $(npm --version)"
           echo "Node version: $(node --version)"
-
-      - name: Test OIDC Token Request
-        run: |
-          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
-            echo "OIDC is available"
-          else
-            echo "OIDC is NOT available - check permissions"
-          fi
 
       - name: Create Release Pull Request or Publish
         if: ${{ !inputs.dry_run }}
