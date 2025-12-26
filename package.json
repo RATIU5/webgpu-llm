@@ -1,26 +1,26 @@
 {
-  "name": "root",
-  "type": "module",
-  "version": "0.0.0",
-  "private": true,
-  "packageManager": "pnpm@10.14.0",
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "scripts": {
-    "dev:docs": "pnpm --filter docs dev",
-    "dev:cli": "pnpm --filter @ratiu5/starlight-search-cli dev",
-    "build": "pnpm --filter @ratiu5/starlight-search-cli build",
-    "build:docs": "pnpm --filter docs build",
-    "build:cli": "pnpm --filter @ratiu5/starlight-search-cli build",
-    "preview:docs": "pnpm --filter docs preview",
-    "typecheck:cli": "pnpm --filter @ratiu5/starlight-search-cli typecheck",
-    "typecheck:docs": "pnpm --filter docs typecheck",
-    "check": "biome check .",
-    "check:write": "biome check --write ."
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.3.10",
-    "@changesets/cli": "^2.29.4"
-  }
+	"name": "root",
+	"type": "module",
+	"version": "0.0.0",
+	"private": true,
+	"packageManager": "pnpm@10.14.0",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"scripts": {
+		"dev:docs": "pnpm --filter docs dev",
+		"dev:cli": "pnpm --filter @ratiu5/starlight-search-cli dev",
+		"build": "pnpm --filter @ratiu5/starlight-search-cli build",
+		"build:docs": "pnpm --filter docs build",
+		"build:cli": "pnpm --filter @ratiu5/starlight-search-cli build",
+		"preview:docs": "pnpm --filter docs preview",
+		"typecheck:cli": "pnpm --filter @ratiu5/starlight-search-cli typecheck",
+		"typecheck:docs": "pnpm --filter docs typecheck",
+		"check": "biome check .",
+		"check:write": "biome check --write ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.3.10",
+		"@changesets/cli": "^2.29.4"
+	}
 }

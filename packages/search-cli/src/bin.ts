@@ -8,6 +8,6 @@ import { run } from "./Cli.js";
 const MainLayer = Layer.mergeAll(NodeContext.layer, NodeHttpClient.layer);
 
 run(process.argv).pipe(
-  Effect.provide(MainLayer),
-  NodeRuntime.runMain({ disableErrorReporting: true }),
+	Effect.provide(MainLayer),
+	NodeRuntime.runMain({ disableErrorReporting: true }),
 );
