@@ -380,6 +380,108 @@ export class ParticleSystem { /* custom logic */ }
 ```
 :::
 
+## Framework Integration
+
+### Three.js with TypeGPU
+
+Use TypeGPU for type-safe compute shaders alongside Three.js rendering:
+
+```typescript title="Three.js + TypeGPU compute" {5-6,15-19}
+import * as THREE from "three/webgpu";
+import tgpu from "typegpu";
+import * as d from "typegpu/data";
+
+// Share device between Three.js and TypeGPU
+const renderer = new THREE.WebGPURenderer();
+await renderer.init();
+
+const root = await tgpu.init({
+  device: renderer.backend.device,  // Reuse Three.js device
+});
+
+// TypeGPU compute for physics
+const positions = root.createBuffer(d.arrayOf(d.vec3f, 1000)).$usage("storage");
+
+// Three.js reads TypeGPU buffer
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute("position", new THREE.BufferAttribute(
+  root.unwrap(positions),
+  3
+));
+
+function animate() {
+  // TypeGPU: Update physics
+  physicsComputePipeline.dispatchWorkgroups(64);
+
+  // Three.js: Render scene
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+```
+
+:::tip[Shared Device]
+Reuse the same `GPUDevice` between TypeGPU and Three.js to avoid synchronization overhead and enable zero-copy buffer sharing.
+:::
+
+### Babylon.js with TypeGPU
+
+```typescript title="Babylon.js + TypeGPU"
+import { Engine, Scene } from "@babylonjs/core";
+import tgpu from "typegpu";
+
+// Initialize Babylon with WebGPU
+const engine = new Engine(canvas, true, {
+  preserveDrawingBuffer: true,
+  stencil: true,
+});
+await engine.initAsync();
+
+// Initialize TypeGPU with Babylon's device
+const root = await tgpu.init({
+  device: engine._device,  // Access internal device
+});
+
+// Use TypeGPU for compute workloads
+const computeBuffer = root
+  .createBuffer(d.arrayOf(d.f32, 1024))
+  .$usage("storage");
+
+// Babylon handles rendering, TypeGPU handles compute
+engine.runRenderLoop(() => {
+  computePipeline.execute();  // TypeGPU compute
+  scene.render();             // Babylon render
+});
+```
+
+### Pattern: Hybrid Rendering
+
+```typescript title="Framework renders, TypeGPU computes"
+// 1. TypeGPU owns compute resources
+const particleData = root.createBuffer(particleSchema, particles);
+const computePipeline = root
+  .withCompute(updateParticlesShader)
+  .createPipeline();
+
+// 2. Framework reads results
+const rawBuffer = root.unwrap(particleData);
+framework.setInstanceBuffer(rawBuffer);
+
+// 3. Render loop
+function frame() {
+  computePipeline.execute();        // TypeGPU: physics
+  framework.render(scene, camera);  // Framework: graphics
+  requestAnimationFrame(frame);
+}
+```
+
+:::caution[WebGPU Renderer Required]
+Framework integration requires WebGPU backends:
+- Three.js: `import * as THREE from "three/webgpu"`
+- Babylon.js: Enable WebGPU engine mode
+
+WebGL renderers cannot share resources with TypeGPU.
+:::
+
 ## Resources
 
 :::note[Official Documentation]
@@ -387,4 +489,5 @@ export class ParticleSystem { /* custom logic */ }
 - [WebGPU Interoperability](https://docs.swmansion.com/TypeGPU/integration/webgpu-interoperability/)
 - [React Native Support](https://docs.swmansion.com/TypeGPU/integration/react-native/)
 - [Generator CLI](https://docs.swmansion.com/TypeGPU/tooling/tgpu-gen/)
+- [Three.js WebGPU](https://threejs.org/docs/#manual/en/introduction/How-to-use-WebGPU)
 :::

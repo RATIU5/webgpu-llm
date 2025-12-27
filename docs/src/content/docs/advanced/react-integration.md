@@ -1,0 +1,393 @@
+---
+title: React Integration
+sidebar:
+  order: 50
+---
+
+## Overview
+
+WebGPU integrates with React through careful lifecycle management. This guide covers patterns for React web applications and React Native with `react-native-wgpu`.
+
+## React Web Patterns
+
+### useWebGPU Hook
+
+```typescript title="useWebGPU.ts" {8-23}
+import { useEffect, useRef, useState } from "react";
+
+interface WebGPUContext {
+  device: GPUDevice;
+  context: GPUCanvasContext;
+  format: GPUTextureFormat;
+}
+
+export function useWebGPU(canvasRef: React.RefObject<HTMLCanvasElement>) {
+  const [gpu, setGpu] = useState<WebGPUContext | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let destroyed = false;
+
+    async function init() {
+      if (!navigator.gpu) {
+        setError("WebGPU not supported");
+        return;
+      }
+
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        setError("No GPU adapter found");
+        return;
+      }
+
+      const device = await adapter.requestDevice();
+      if (destroyed) {
+        device.destroy();
+        return;
+      }
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const context = canvas.getContext("webgpu");
+      if (!context) {
+        setError("Failed to get WebGPU context");
+        return;
+      }
+
+      const format = navigator.gpu.getPreferredCanvasFormat();
+      context.configure({ device, format });
+
+      setGpu({ device, context, format });
+    }
+
+    init();
+
+    return () => {
+      destroyed = true;
+      gpu?.device.destroy();
+    };
+  }, [canvasRef]);
+
+  return { gpu, error };
+}
+```
+
+### Canvas Component
+
+```tsx title="WebGPUCanvas.tsx" {6,10-12}
+import { useRef, useEffect } from "react";
+import { useWebGPU } from "./useWebGPU";
+
+interface Props {
+  onReady: (gpu: WebGPUContext) => void;
+  onFrame?: (gpu: WebGPUContext, time: number) => void;
+}
+
+export function WebGPUCanvas({ onReady, onFrame }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { gpu, error } = useWebGPU(canvasRef);
+  const frameRef = useRef<number>();
+
+  useEffect(() => {
+    if (!gpu) return;
+    onReady(gpu);
+
+    if (onFrame) {
+      function loop(time: number) {
+        onFrame!(gpu!, time);
+        frameRef.current = requestAnimationFrame(loop);
+      }
+      frameRef.current = requestAnimationFrame(loop);
+
+      return () => {
+        if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      };
+    }
+  }, [gpu, onReady, onFrame]);
+
+  if (error) return <div>Error: {error}</div>;
+
+  return <canvas ref={canvasRef} width={800} height={600} />;
+}
+```
+
+### TypeGPU with React
+
+```tsx title="TypeGPU React component"
+import { useEffect, useRef, useState } from "react";
+import tgpu, { type TgpuRoot } from "typegpu";
+import * as d from "typegpu/data";
+
+export function ParticleSystem() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [root, setRoot] = useState<TgpuRoot | null>(null);
+
+  useEffect(() => {
+    let tgpuRoot: TgpuRoot | null = null;
+
+    async function init() {
+      tgpuRoot = await tgpu.init({
+        canvas: canvasRef.current!,
+      });
+      setRoot(tgpuRoot);
+    }
+
+    init();
+
+    return () => {
+      tgpuRoot?.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!root) return;
+
+    // Create GPU resources
+    const particles = root
+      .createBuffer(d.arrayOf(d.vec4f, 1000))
+      .$usage("storage");
+
+    // Setup render loop...
+  }, [root]);
+
+  return <canvas ref={canvasRef} width={800} height={600} />;
+}
+```
+
+### Resource Management
+
+:::danger[Cleanup is Critical]
+GPU resources must be explicitly destroyed. Failing to cleanup causes memory leaks:
+
+```tsx
+useEffect(() => {
+  const buffer = device.createBuffer({ /* ... */ });
+  const texture = device.createTexture({ /* ... */ });
+
+  return () => {
+    buffer.destroy();
+    texture.destroy();
+  };
+}, [device]);
+```
+:::
+
+### State Management
+
+```tsx title="GPU state with React state"
+function useGPUBuffer<T>(root: TgpuRoot, schema: TgpuDataType<T>) {
+  const [data, setData] = useState<T | null>(null);
+  const bufferRef = useRef<TgpuBuffer<T> | null>(null);
+
+  useEffect(() => {
+    bufferRef.current = root
+      .createBuffer(schema)
+      .$usage("storage", "uniform");
+
+    return () => {
+      bufferRef.current?.destroy();
+    };
+  }, [root, schema]);
+
+  const write = useCallback((newData: T) => {
+    bufferRef.current?.write(newData);
+    setData(newData);
+  }, []);
+
+  return { buffer: bufferRef.current, data, write };
+}
+```
+
+## React Native
+
+### Requirements
+
+- React Native 0.81+
+- New Architecture enabled
+- `react-native-wgpu` package
+
+### Setup
+
+```bash
+npm install react-native-wgpu typegpu
+npm install -D @webgpu/types
+```
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "types": ["@webgpu/types"]
+  }
+}
+```
+
+```javascript title="babel.config.js (for TGSL)"
+module.exports = {
+  plugins: ["unplugin-typegpu/babel"],
+};
+```
+
+:::caution[Expo Users]
+React Native WebGPU is not supported by Expo Go. Run `expo prebuild` and build the native app.
+:::
+
+### Basic Example
+
+```tsx title="React Native WebGPU"
+import { Canvas, useDevice, useGPUContext } from "react-native-wgpu";
+import tgpu from "typegpu";
+import * as d from "typegpu/data";
+
+function Triangle() {
+  const device = useDevice();
+  const context = useGPUContext();
+
+  useEffect(() => {
+    if (!device || !context) return;
+
+    const format = navigator.gpu.getPreferredCanvasFormat();
+    context.configure({ device, format });
+
+    // Create shaders and pipeline
+    const vertexFn = tgpu.vertexFn({
+      idx: d.builtin.vertexIndex,
+    }, d.vec4f).does`(input) -> vec4f {
+      const positions = array<vec2f, 3>(
+        vec2f(0.0, 0.5),
+        vec2f(-0.5, -0.5),
+        vec2f(0.5, -0.5)
+      );
+      return vec4f(positions[input.idx], 0.0, 1.0);
+    }`;
+
+    const fragmentFn = tgpu.fragmentFn({}, d.vec4f)
+      .does`() -> @location(0) vec4f {
+        return vec4f(1.0, 0.5, 0.0, 1.0);
+      }`;
+
+    // Build pipeline and render...
+  }, [device, context]);
+
+  return <Canvas style={{ flex: 1 }} />;
+}
+```
+
+### Worklets Integration
+
+For smooth animations, use Reanimated worklets:
+
+```tsx title="WebGPU Worklets"
+import { useSharedContext } from "react-native-webgpu-worklets";
+
+function AnimatedScene() {
+  const sharedContext = useSharedContext();
+
+  // GPU work runs on UI thread via worklets
+  const renderWorklet = useCallback(() => {
+    "worklet";
+    const { device, context } = sharedContext.value;
+    // Render frame...
+  }, [sharedContext]);
+
+  return <Canvas onFrame={renderWorklet} />;
+}
+```
+
+## Performance Tips
+
+### Minimize Re-renders
+
+```tsx title="Memoize GPU-dependent components"
+const ParticleRenderer = memo(function ParticleRenderer({
+  particleBuffer,
+}: {
+  particleBuffer: GPUBuffer;
+}) {
+  // Only re-renders when buffer reference changes
+});
+```
+
+### Batch State Updates
+
+```tsx title="Avoid per-frame state updates"
+// Bad: causes re-render every frame
+const [frameCount, setFrameCount] = useState(0);
+function render() {
+  setFrameCount(c => c + 1);  // Don't do this
+}
+
+// Good: use refs for frame-local data
+const frameCountRef = useRef(0);
+function render() {
+  frameCountRef.current++;  // No re-render
+}
+```
+
+### Stable References
+
+```tsx title="Stable callback references"
+const renderFrame = useCallback((time: number) => {
+  // Render logic
+}, []); // Empty deps = stable reference
+
+useEffect(() => {
+  const id = requestAnimationFrame(renderFrame);
+  return () => cancelAnimationFrame(id);
+}, [renderFrame]);
+```
+
+## Common Patterns
+
+### Resize Handling
+
+```tsx title="Handle canvas resize"
+function useCanvasSize(canvasRef: React.RefObject<HTMLCanvasElement>) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setSize({ width, height });
+    });
+
+    if (canvasRef.current) {
+      observer.observe(canvasRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [canvasRef]);
+
+  return size;
+}
+```
+
+### Error Boundaries
+
+```tsx title="GPU error boundary"
+class GPUErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+```
+
+## Resources
+
+:::note[References]
+- [react-native-wgpu](https://github.com/wcandillon/react-native-webgpu)
+- [TypeGPU React Native Guide](https://docs.swmansion.com/TypeGPU/integration/react-native/)
+- [react-native-webgpu-worklets](https://github.com/software-mansion-labs/react-native-webgpu-worklets)
+:::
