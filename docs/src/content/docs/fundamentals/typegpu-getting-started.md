@@ -8,12 +8,14 @@ sidebar:
 
 TypeGPU is a modular toolkit for WebGPU that brings type safety and developer-friendly abstractions to GPU programming. Developed by Software Mansion, it provides advanced type inference and enables writing GPU shaders directly in TypeScript through TGSL (TypeGPU Shading Language).
 
-TypeGPU mirrors WGSL syntax in TypeScript while providing compile-time type checking, autocomplete support, and static analysis. The toolkit is designed to be non-opinionated, allowing incremental adoption and the ability to eject to vanilla WebGPU at any point.
+:::tip[Why TypeGPU?]
+TypeGPU mirrors WGSL syntax in TypeScript while providing compile-time type checking, autocomplete support, and static analysis. The toolkit is non-opinionated, allowing incremental adoption and the ability to eject to vanilla WebGPU at any point.
+:::
 
-Primary use cases:
-- **Foundation for new projects**: Handles data serialization, buffer management, and shader composition
-- **Integration with existing code**: Type-safe APIs can be adopted independently
-- **Library interoperability**: Enables typed data sharing between WebGPU libraries
+**Primary use cases:**
+- **Foundation for new projects** — Handles data serialization, buffer management, and shader composition
+- **Integration with existing code** — Type-safe APIs can be adopted independently
+- **Library interoperability** — Enables typed data sharing between WebGPU libraries
 
 ## Core Features
 
@@ -21,7 +23,7 @@ Primary use cases:
 
 TypeGPU uses composable data schemas to manage data transfer between CPU and GPU. Every WGSL data type is represented as JavaScript schemas imported from `typegpu/data`:
 
-```typescript
+```typescript title="Defining a typed schema"
 import { struct, f32, vec3f, arrayOf } from "typegpu/data";
 
 const Particle = struct({
@@ -40,7 +42,7 @@ Schemas provide automatic serialization/deserialization, compile-time validation
 
 TGSL allows writing GPU shader code in TypeScript. Functions marked with `'use gpu'` are transpiled to WGSL at build time:
 
-```typescript
+```typescript title="Writing a TGSL shader" {3}
 const squareNumbers = tgpu
   .fn([inputBuffer, outputBuffer])
   .does(() => {
@@ -51,15 +53,15 @@ const squareNumbers = tgpu
   .$name("squareNumbers");
 ```
 
-TGSL provides unified language development, full IDE support, code reuse between CPU and GPU, and gradual adoption alongside WGSL.
-
-Note: JavaScript lacks operator overloading, so vector and matrix operations require functions from `typegpu/std` (like `add`, `mul`). As of version 0.7+, vectors and matrices also support method chaining: `v1.mul(2).add(v2)`.
+:::note[Vector Operations]
+JavaScript lacks operator overloading, so vector and matrix operations require functions from `typegpu/std` (like `add`, `mul`). As of version 0.7+, vectors and matrices also support method chaining: `v1.mul(2).add(v2)`.
+:::
 
 ### Bindless Resources
 
 TypeGPU uses descriptive string keys instead of numeric binding indices:
 
-```typescript
+```typescript title="Named resource bindings"
 const resources = {
   particles: root.createBuffer(particleSchema).$usage("storage"),
   forces: root.createBuffer(forceSchema).$usage("storage"),
@@ -70,19 +72,15 @@ This improves code readability and reduces binding errors.
 
 ## Installation
 
-```bash
+```bash title="Install TypeGPU"
 npm install typegpu
 ```
 
-For TGSL functionality, install the bundler plugin:
-
-```bash
+```bash title="Install bundler plugin for TGSL"
 npm install --save-dev unplugin-typegpu
 ```
 
-Add WebGPU type definitions:
-
-```bash
+```bash title="Add WebGPU type definitions"
 npm install --save-dev @webgpu/types
 ```
 
@@ -90,10 +88,10 @@ npm install --save-dev @webgpu/types
 
 TypeGPU's shader transpilation requires `unplugin-typegpu`. The plugin supports Vite, Webpack, Rollup, esbuild, and other bundlers via unplugin.
 
-### Vite (Recommended)
+<details>
+<summary>**Vite (Recommended)**</summary>
 
-```typescript
-// vite.config.ts
+```typescript title="vite.config.ts"
 import { defineConfig } from "vite";
 import typegpuPlugin from "unplugin-typegpu/vite";
 
@@ -107,16 +105,19 @@ export default defineConfig({
 });
 ```
 
-Configuration options:
-- `autoNamingEnabled` (default: `true`): Names resources based on variable names
-- `earlyPruning` (default: `true`): Skips files without TypeGPU imports
-- `include` (default: `/\.m?[jt]sx?$/`): File patterns to process
-- `exclude`: Patterns to skip
+| Option | Default | Description |
+|--------|---------|-------------|
+| `autoNamingEnabled` | `true` | Names resources based on variable names |
+| `earlyPruning` | `true` | Skips files without TypeGPU imports |
+| `include` | `/\.m?[jt]sx?$/` | File patterns to process |
+| `exclude` | — | Patterns to skip |
 
-### Webpack
+</details>
 
-```javascript
-// webpack.config.js
+<details>
+<summary>**Webpack**</summary>
+
+```javascript title="webpack.config.js"
 const TypeGPUPlugin = require("unplugin-typegpu/webpack");
 
 module.exports = {
@@ -129,10 +130,12 @@ module.exports = {
 };
 ```
 
-### Babel (React Native)
+</details>
 
-```javascript
-// babel.config.js
+<details>
+<summary>**Babel (React Native)**</summary>
+
+```javascript title="babel.config.js"
 module.exports = (api) => {
   api.cache(true);
   return {
@@ -142,11 +145,13 @@ module.exports = (api) => {
 };
 ```
 
+</details>
+
 ## First Program
 
 A complete example that squares an array of numbers on the GPU:
 
-```typescript
+```typescript title="complete-example.ts" {8-11,17-22,25-32}
 import tgpu from "typegpu";
 import { arrayOf, f32 } from "typegpu/data";
 
@@ -196,33 +201,30 @@ main();
 
 ### Key Components
 
-**Initialization**: `tgpu.init()` requests a GPU device and returns a root object managing all TypeGPU operations.
-
-**Data Schemas**: `arrayOf(f32, 5)` defines an array of 5 floats. TypeGPU uses schemas to determine buffer sizes, validate data, and handle serialization.
-
-**Buffer Creation**: `root.createBuffer(schema, data).$usage("storage")` creates a GPU buffer. The `$usage()` method sets buffer usage flags:
-- `'storage'`: Read/write shader access
-- `'uniform'`: Read-only constants
-- `'vertex'`: Vertex data
-- `'copy-src'` / `'copy-dst'`: Transfer operations
-
-**TGSL Functions**: The `'use gpu'` directive marks functions for transpilation. Buffer dependencies are passed to `tgpu.fn()`.
-
-**Pipeline Execution**: `makeComputePipeline()` creates a pipeline; `dispatchWorkgroups()` executes it.
-
-**Reading Results**: `buffer.read()` asynchronously retrieves data from GPU to CPU.
+| Component | Description |
+|-----------|-------------|
+| `tgpu.init()` | Requests a GPU device and returns a root object managing all TypeGPU operations |
+| `arrayOf(f32, 5)` | Defines an array of 5 floats; used for buffer sizes, validation, and serialization |
+| `$usage("storage")` | Sets buffer usage flags (`storage`, `uniform`, `vertex`, `copy-src`, `copy-dst`) |
+| `"use gpu"` directive | Marks functions for TGSL transpilation |
+| `makeComputePipeline()` | Creates a compute pipeline from a TGSL function |
+| `buffer.read()` | Asynchronously retrieves data from GPU to CPU |
 
 ## Initialization Patterns
 
-### Basic
+<details>
+<summary>**Basic initialization**</summary>
 
 ```typescript
 const root = await tgpu.init();
 ```
 
-### Custom Device Options
+</details>
 
-```typescript
+<details>
+<summary>**Custom device options**</summary>
+
+```typescript title="High-performance with features"
 const root = await tgpu.init({
   adapter: { powerPreference: "high-performance" },
   device: {
@@ -234,21 +236,22 @@ const root = await tgpu.init({
 });
 ```
 
-### From Existing Device
+</details>
 
-When integrating with existing WebGPU code:
+<details>
+<summary>**From existing device**</summary>
 
-```typescript
+```typescript title="Integrating with existing WebGPU code"
 const adapter = await navigator.gpu.requestAdapter();
 const device = await adapter.requestDevice();
 const root = tgpu.initFromDevice(device);
 ```
 
+</details>
+
 ## TypeScript Configuration
 
-Required settings:
-
-```json
+```json title="tsconfig.json"
 {
   "compilerOptions": {
     "target": "ES2020",
@@ -260,9 +263,9 @@ Required settings:
 }
 ```
 
-For Vite, add to `src/vite-env.d.ts`:
+For Vite projects, add to `src/vite-env.d.ts`:
 
-```typescript
+```typescript title="src/vite-env.d.ts"
 /// <reference types="vite/client" />
 /// <reference types="@webgpu/types" />
 ```
@@ -271,13 +274,13 @@ For Vite, add to `src/vite-env.d.ts`:
 
 ### Primitive Types
 
-```typescript
+```typescript title="Available primitives"
 import { f32, i32, u32, bool, vec2f, vec3f, vec4f, mat4x4f } from "typegpu/data";
 ```
 
 ### Structs
 
-```typescript
+```typescript title="Defining a struct schema"
 import { struct, f32, vec3f } from "typegpu/data";
 
 const Material = struct({
@@ -289,7 +292,7 @@ const Material = struct({
 
 ### Arrays
 
-```typescript
+```typescript title="Fixed-size arrays"
 import { arrayOf, f32 } from "typegpu/data";
 
 const FloatArray = arrayOf(f32, 100);
@@ -297,7 +300,7 @@ const FloatArray = arrayOf(f32, 100);
 
 ### Type Extraction
 
-```typescript
+```typescript title="Extracting TypeScript types from schemas" {8}
 const Particle = struct({
   position: vec3f,
   velocity: vec3f,
@@ -317,7 +320,7 @@ const particle: ParticleData = {
 
 Buffers require appropriate usage flags for different operations:
 
-```typescript
+```typescript title="Buffer usage patterns"
 // Storage buffer for shader read/write
 const storage = root.createBuffer(schema).$usage("storage");
 
@@ -341,7 +344,7 @@ const writable = root
 
 Use `$name()` for debugging:
 
-```typescript
+```typescript title="Named resources for debugging"
 const particleBuffer = root
   .createBuffer(particleSchema)
   .$usage("storage")
@@ -353,7 +356,9 @@ const updateShader = tgpu
   .$name("updateParticles");
 ```
 
+:::tip[Auto-naming]
 With `autoNamingEnabled` in the bundler plugin, many names are added automatically based on variable names.
+:::
 
 ## Project Structure
 
@@ -371,7 +376,7 @@ project-root/
 └── tsconfig.json
 ```
 
-Principles:
+**Principles:**
 - Separate GPU and CPU code
 - Group shaders by purpose
 - Centralize schema definitions
@@ -379,20 +384,21 @@ Principles:
 
 ## TGSL Requirements
 
+:::caution[Required for TGSL]
 TGSL functions require:
-
 1. The `'use gpu'` directive as the first statement
 2. The `unplugin-typegpu` bundler plugin configured
 3. Buffer dependencies passed to `tgpu.fn()`
+:::
 
-```typescript
-// Correct
+```typescript title="Correct vs incorrect TGSL"
+// ✓ Correct
 const shader = tgpu.fn([buffer]).does(() => {
   "use gpu";
   // Shader code
 });
 
-// Missing directive - won't transpile
+// ✗ Missing directive - won't transpile
 const broken = tgpu.fn([buffer]).does(() => {
   // No 'use gpu' - this runs on CPU only
 });
@@ -400,11 +406,9 @@ const broken = tgpu.fn([buffer]).does(() => {
 
 ## Resources
 
+:::note[Official Resources]
 - **Documentation**: [docs.swmansion.com/TypeGPU](https://docs.swmansion.com/TypeGPU/)
 - **GitHub**: [github.com/software-mansion/TypeGPU](https://github.com/software-mansion/TypeGPU)
 - **npm**: [npmjs.com/package/typegpu](https://www.npmjs.com/package/typegpu)
 - **Discord**: Software Mansion Community Discord
-
----
-
-TypeGPU brings type safety to WebGPU development, catching errors at compile time rather than runtime. Its modular design allows incremental adoption—start with buffer management, add TGSL shaders when comfortable, and expand as needed. The ability to eject to vanilla WebGPU ensures you're never locked in.
+:::

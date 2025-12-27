@@ -8,20 +8,22 @@ sidebar:
 
 WebGPU uses asynchronous error reporting and a stack-based error scope system, unlike WebGL's synchronous `getError()` approach. All errors are detected asynchronously in a GPU process, avoiding synchronous validation overhead.
 
-When a WebGPU operation fails, the returned object is internally marked as invalid. Operations using that invalid object also become invalid—errors propagate contagiously. No synchronous exceptions are thrown; objects appear valid to JavaScript but fail during command submission. Developers must actively capture errors using error scopes.
+:::note[Error Propagation]
+When a WebGPU operation fails, the returned object is internally marked as invalid. Operations using that invalid object also become invalid—errors propagate contagiously. No synchronous exceptions are thrown; objects appear valid to JavaScript but fail during command submission.
+:::
 
 ## Error Types
 
 ### GPUValidationError
 
-Programming mistakes that violate API constraints. Common causes:
+Programming mistakes that violate API constraints:
 - Invalid resource descriptors
-- Binding mismatches (bind group layouts not matching pipeline layouts)
+- Binding mismatches
 - Usage flag violations
 - Shader compilation failures
 - Using destroyed resources
 
-```javascript
+```javascript title="Validation error example"
 // Validation error: missing COPY_DST flag for writeBuffer
 const buffer = device.createBuffer({
   size: 256,
@@ -33,11 +35,8 @@ device.queue.writeBuffer(buffer, 0, data); // Fails
 ### GPUOutOfMemoryError
 
 Resource exhaustion despite valid API usage:
-- Insufficient GPU memory
-- Memory fragmentation
-- Exceeding implementation limits
 
-```javascript
+```javascript title="Potential OOM scenario"
 // May fail on devices with limited VRAM
 const hugeTexture = device.createTexture({
   size: { width: 16384, height: 16384 },
@@ -52,13 +51,15 @@ Implementation failures despite valid usage—driver crashes, hardware failures,
 
 ### Device Lost
 
-Catastrophic failure where the GPU becomes unavailable:
+:::danger[Catastrophic Failure]
+Device lost means the GPU becomes unavailable:
 - Hardware disconnection
 - Driver crash (TDR)
 - Application calls `device.destroy()`
 - System resource exhaustion
 
 Device lost requires complete recovery: recreate device and all resources.
+:::
 
 ## Error Scopes
 
@@ -66,7 +67,7 @@ Error scopes capture errors hermetically, preventing leakage between unrelated c
 
 ### Basic Usage
 
-```javascript
+```javascript title="Basic error scope"
 device.pushErrorScope("validation");
 const buffer = device.createBuffer(descriptor);
 const error = await device.popErrorScope();
@@ -80,7 +81,7 @@ Filter options: `'validation'`, `'out-of-memory'`, `'internal'`
 
 ### Multiple Error Types
 
-```javascript
+```javascript title="Handle multiple error types" {2-3,8-9}
 async function createBufferWithErrorHandling(device, descriptor) {
   device.pushErrorScope("validation");
   device.pushErrorScope("out-of-memory");
@@ -108,7 +109,7 @@ async function createBufferWithErrorHandling(device, descriptor) {
 
 Inner scopes capture errors first; uncaptured errors propagate to outer scopes:
 
-```javascript
+```javascript title="Nested error scopes"
 async function createPipeline(device, shaderCode, pipelineDescriptor) {
   device.pushErrorScope("validation"); // Outer: pipeline
 
@@ -136,13 +137,15 @@ async function createPipeline(device, shaderCode, pipelineDescriptor) {
 }
 ```
 
+:::note
 `popErrorScope()` returns only the first error in the scope.
+:::
 
 ## Uncaptured Errors
 
 Errors not captured by any scope trigger the `uncapturederror` event:
 
-```javascript
+```javascript title="Global error handler"
 device.addEventListener("uncapturederror", (event) => {
   console.error("Uncaptured GPU error:", event.error.message);
 
@@ -163,9 +166,11 @@ Errors become uncaptured when:
 
 ## Device Lost Handling
 
+:::caution[Set Up Immediately]
 Monitor `device.lost` immediately after device creation:
+:::
 
-```javascript
+```javascript title="Device lost handler"
 const device = await adapter.requestDevice();
 
 device.lost.then((info) => {
@@ -181,7 +186,7 @@ The `reason` is either `'destroyed'` (explicit) or `'unknown'` (system failure).
 
 ### Recovery Pattern
 
-```javascript
+```javascript title="Complete recovery pattern"
 class WebGPUApp {
   constructor() {
     this.adapter = null;
@@ -234,6 +239,7 @@ class WebGPUApp {
 
 ## Debugging with Labels
 
+:::tip[Label Everything]
 Labels appear in error messages, making debugging easier:
 
 ```javascript
@@ -253,52 +259,60 @@ const texture = device.createTexture({
 // Error messages include labels:
 // "Buffer 'Particle Position Buffer': usage must be non-zero"
 ```
-
-Label all resources during development.
+:::
 
 ## Common Validation Errors
 
-### Buffer size must be multiple of 4
+<details>
+<summary>**Buffer size must be multiple of 4**</summary>
 
 ```javascript
-// Wrong
+// ✗ Wrong
 device.createBuffer({ size: 255, usage: GPUBufferUsage.STORAGE });
 
-// Correct
+// ✓ Correct
 device.createBuffer({ size: 256, usage: GPUBufferUsage.STORAGE });
 ```
 
-### Buffer usage must be non-zero
+</details>
+
+<details>
+<summary>**Buffer usage must be non-zero**</summary>
 
 ```javascript
-// Wrong
+// ✗ Wrong
 device.createBuffer({ size: 256, usage: 0 });
 
-// Correct
+// ✓ Correct
 device.createBuffer({ size: 256, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 ```
 
-### Bind group entry doesn't match layout
+</details>
+
+<details>
+<summary>**Bind group entry doesn't match layout**</summary>
 
 ```javascript
-// Wrong: binding number mismatch
+// ✗ Wrong: binding number mismatch
 const bindGroup = device.createBindGroup({
   layout: bindGroupLayout,
   entries: [{ binding: 1, resource: { buffer } }], // Layout expects binding 0
 });
 
-// Correct
+// ✓ Correct
 const bindGroup = device.createBindGroup({
   layout: bindGroupLayout,
   entries: [{ binding: 0, resource: { buffer } }],
 });
 ```
 
+</details>
+
 ## TypeGPU Error Prevention
 
 TypeGPU catches many errors at compile time through TypeScript's type system:
 
-```typescript
+```typescript title="TypeGPU compile-time validation" {11-12}
 import * as d from "typegpu/data";
 
 const Particle = d.struct({
@@ -322,15 +336,16 @@ const validData: (typeof Particle)["~repr"] = {
 };
 ```
 
-TypeGPU eliminates:
+:::note[TypeGPU Eliminates]
 - Binding type mismatches
 - Data layout errors
 - Usage flag errors (set automatically)
 - Format mismatches
+:::
 
 ## Complete Error Handling Example
 
-```javascript
+```javascript title="Production error handling"
 class GPUResourceManager {
   constructor(device) {
     this.device = device;
@@ -416,7 +431,3 @@ class GPUResourceManager {
   }
 }
 ```
-
----
-
-WebGPU's asynchronous error model trades synchronous simplicity for performance and composability. Use error scopes during development to catch validation and out-of-memory errors, implement a global uncaptured error handler, monitor `device.lost` for catastrophic failures, and label all resources for clear error messages. With proper error handling, WebGPU applications can recover from failures and provide helpful debugging information.

@@ -8,29 +8,30 @@ sidebar:
 
 WebGPU employs a command buffer architecture where GPU operations are recorded and then executed. Unlike immediate-mode graphics APIs, WebGPU follows a deferred execution model: you create a command encoder, record commands into it, finish to produce a command buffer, and submit to the device queue.
 
+:::note[Architecture]
 This architecture mirrors Vulkan, Metal, and Direct3D 12, providing explicit control over GPU workloads while enabling driver optimizations through reduced synchronization overhead.
+:::
 
 ## Command Buffer Lifecycle
 
-The lifecycle progresses through four stages:
-
-**Recording**: Create a command encoder and call methods to add operations. Validation occurs during recording.
-
-**Finishing**: Call `encoder.finish()` to produce a GPUCommandBuffer. The encoder becomes invalid after this.
-
-**Submission**: Pass command buffers to `queue.submit()`. Commands enter the device timeline for execution.
-
-**Execution**: The GPU processes commands. Command buffers are single-use and cannot be resubmitted.
+| Stage | Description |
+|-------|-------------|
+| **Recording** | Create a command encoder and call methods to add operations |
+| **Finishing** | Call `encoder.finish()` to produce a GPUCommandBuffer |
+| **Submission** | Pass command buffers to `queue.submit()` |
+| **Execution** | GPU processes commands; buffers are single-use |
 
 ## Creating Command Encoders
 
-```javascript
+```javascript title="Create command encoder"
 const encoder = device.createCommandEncoder({
   label: "main-render-encoder",
 });
 ```
 
+:::tip
 The `label` property appears in error messages and profiling tools. Create a fresh encoder for each frame—the overhead is minimal, and it keeps code simpler.
+:::
 
 ## Render Pass Commands
 
@@ -38,7 +39,7 @@ Render passes are bounded regions that specify which textures receive output and
 
 ### Beginning a Render Pass
 
-```javascript
+```javascript title="Render pass with depth" {3-9,10-15}
 const renderPassDescriptor = {
   label: "main-render-pass",
   colorAttachments: [{
@@ -60,18 +61,21 @@ const passEncoder = encoder.beginRenderPass(renderPassDescriptor);
 
 ### Color Attachments
 
-Each color attachment specifies:
-- **view**: GPUTextureView to render into
-- **resolveTarget**: Optional, for multisample resolve
-- **clearValue**: Color to clear if loadOp is 'clear'
-- **loadOp**: 'clear' or 'load' (preserve existing contents)
-- **storeOp**: 'store' or 'discard'
+| Property | Description |
+|----------|-------------|
+| `view` | GPUTextureView to render into |
+| `resolveTarget` | Optional, for multisample resolve |
+| `clearValue` | Color to clear if loadOp is 'clear' |
+| `loadOp` | `'clear'` or `'load'` (preserve existing) |
+| `storeOp` | `'store'` or `'discard'` |
 
-Using 'clear' for loadOp and 'discard' for storeOp when you don't need previous or final contents improves performance on tile-based GPUs by eliminating memory bandwidth.
+:::tip[Performance on Tile-Based GPUs]
+Using `'clear'` for loadOp and `'discard'` for storeOp when you don't need previous or final contents improves performance by eliminating memory bandwidth.
+:::
 
-Multiple color attachments (up to device limit, typically 8) enable deferred rendering:
+Multiple color attachments (up to 8) enable deferred rendering:
 
-```javascript
+```javascript title="Multiple render targets"
 colorAttachments: [
   { view: albedoView, loadOp: "clear", storeOp: "store" },
   { view: normalView, loadOp: "clear", storeOp: "store" },
@@ -82,15 +86,18 @@ colorAttachments: [
 ### Depth-Stencil Attachment
 
 Only one depth-stencil attachment per pass:
-- **depthLoadOp/depthStoreOp**: Depth buffer handling
-- **stencilLoadOp/stencilStoreOp**: Stencil buffer handling
-- **depthClearValue**: Typically 1.0 or 0.0
-- **stencilClearValue**: Typically 0
-- **depthReadOnly/stencilReadOnly**: Mark as read-only
+
+| Property | Description |
+|----------|-------------|
+| `depthLoadOp/depthStoreOp` | Depth buffer handling |
+| `stencilLoadOp/stencilStoreOp` | Stencil buffer handling |
+| `depthClearValue` | Typically 1.0 or 0.0 |
+| `stencilClearValue` | Typically 0 |
+| `depthReadOnly/stencilReadOnly` | Mark as read-only |
 
 ### Drawing Commands
 
-```javascript
+```javascript title="Drawing commands"
 passEncoder.setPipeline(renderPipeline);
 passEncoder.setBindGroup(0, bindGroup);
 passEncoder.setVertexBuffer(0, vertexBuffer);
@@ -107,19 +114,19 @@ passEncoder.drawIndirect(indirectBuffer, indirectOffset);
 passEncoder.drawIndexedIndirect(indirectBuffer, indirectOffset);
 ```
 
-End the pass before encoding more commands:
+:::caution
+End the pass before encoding more commands. After `end()`, the pass encoder is invalid.
 
 ```javascript
 passEncoder.end();
 ```
-
-After `end()`, the pass encoder is invalid.
+:::
 
 ## Compute Pass Commands
 
 Compute passes execute general-purpose GPU computation.
 
-```javascript
+```javascript title="Compute pass with timestamp" {2-6}
 const computePassDescriptor = {
   label: "particle-update-pass",
   timestampWrites: {
@@ -142,7 +149,9 @@ passEncoder.dispatchWorkgroupsIndirect(indirectBuffer, indirectOffset);
 passEncoder.end();
 ```
 
+:::note
 The workgroup count defines a 3D grid. Total invocations = workgroup counts × workgroup size (from `@workgroup_size` in WGSL).
+:::
 
 ## Copy Commands
 
@@ -150,7 +159,7 @@ Copy operations transfer data between resources without shaders, often using spe
 
 ### Buffer to Buffer
 
-```javascript
+```javascript title="Buffer copy"
 encoder.copyBufferToBuffer(
   sourceBuffer,
   sourceOffset,     // bytes, multiple of 4
@@ -162,7 +171,7 @@ encoder.copyBufferToBuffer(
 
 ### Texture to Texture
 
-```javascript
+```javascript title="Texture copy"
 encoder.copyTextureToTexture(
   { texture: sourceTexture, mipLevel: 0, origin: { x: 0, y: 0, z: 0 } },
   { texture: destinationTexture, mipLevel: 0, origin: { x: 0, y: 0, z: 0 } },
@@ -172,7 +181,7 @@ encoder.copyTextureToTexture(
 
 ### Buffer to/from Texture
 
-```javascript
+```javascript title="Texture upload and readback"
 // Upload texture data
 encoder.copyBufferToTexture(
   { buffer: stagingBuffer, offset: 0, bytesPerRow: 256 * 4, rowsPerImage: 256 },
@@ -190,7 +199,7 @@ encoder.copyTextureToBuffer(
 
 ## Finishing and Submission
 
-```javascript
+```javascript title="Finish and submit"
 const commandBuffer = encoder.finish({
   label: "main-command-buffer",
 });
@@ -198,21 +207,24 @@ const commandBuffer = encoder.finish({
 device.queue.submit([commandBuffer]);
 ```
 
+:::danger[Single-Use Buffers]
 The encoder becomes invalid after `finish()`. Command buffers are single-use—submit once, then discard.
+:::
 
 ### Multiple Command Buffers
 
+:::tip[Batch Submissions]
 Batch command buffers in a single submit for efficiency:
 
 ```javascript
-// Less optimal: many small submits
+// ✗ Less optimal: many small submits
 for (let i = 0; i < 100; i++) {
   const encoder = device.createCommandEncoder();
   // ... record work ...
   device.queue.submit([encoder.finish()]);
 }
 
-// Better: batch in single submit
+// ✓ Better: batch in single submit
 const commandBuffers = [];
 for (let i = 0; i < 100; i++) {
   const encoder = device.createCommandEncoder();
@@ -223,12 +235,13 @@ device.queue.submit(commandBuffers);
 ```
 
 Command buffers in a single submit execute in array order.
+:::
 
 ### Direct Queue Writes
 
 For convenience, write data directly without command encoders:
 
-```javascript
+```javascript title="Direct queue writes"
 device.queue.writeBuffer(targetBuffer, bufferOffset, arrayBufferData, dataOffset, size);
 
 device.queue.writeTexture(
@@ -241,7 +254,7 @@ device.queue.writeTexture(
 
 ### Waiting for Completion
 
-```javascript
+```javascript title="Wait for GPU"
 await device.queue.onSubmittedWorkDone();
 console.log("All GPU work completed");
 ```
@@ -252,15 +265,17 @@ WebGPU handles synchronization through implicit barriers between passes and comm
 
 ### Resource State Tracking
 
-- **Exclusive write access**: A resource used for writing cannot be read or written elsewhere in the same pass
-- **Multiple read access**: Resources can be read from multiple bind groups simultaneously
-- **Subresource independence**: Different mip levels or array layers can be used independently
+| Rule | Description |
+|------|-------------|
+| Exclusive write | Resource used for writing cannot be read/written elsewhere in same pass |
+| Multiple read | Resources can be read from multiple bind groups simultaneously |
+| Subresource independence | Different mip levels or array layers can be used independently |
 
 ### Write-After-Read Safety
 
 Within a command buffer, writes followed by reads are automatically synchronized:
 
-```javascript
+```javascript title="Automatic synchronization"
 encoder.copyBufferToBuffer(srcBuffer, 0, dstBuffer, 0, 256);
 const computePass = encoder.beginComputePass();
 computePass.setBindGroup(0, bindGroupUsingDstBuffer);
@@ -270,7 +285,7 @@ computePass.end();
 
 Between passes, all writes complete before subsequent reads:
 
-```javascript
+```javascript title="Pass-to-pass synchronization"
 const renderPass = encoder.beginRenderPass(/* writes to texture */);
 renderPass.end();
 
@@ -281,7 +296,7 @@ computePass.end();
 
 ## Complete Render Loop
 
-```javascript
+```javascript title="Full render loop example" {29-40,42-54}
 async function init() {
   const adapter = await navigator.gpu.requestAdapter();
   const device = await adapter.requestDevice();
@@ -352,7 +367,3 @@ async function init() {
 
 init();
 ```
-
----
-
-The command buffer model provides explicit control over GPU workloads. Create fresh encoders per frame, always end passes before finishing the encoder, batch submissions for efficiency, and let resources remain valid until GPU execution completes. This architecture enables driver optimizations while giving developers precise control over rendering and compute operations.

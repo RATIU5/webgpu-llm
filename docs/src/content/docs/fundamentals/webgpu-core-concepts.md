@@ -8,7 +8,9 @@ sidebar:
 
 WebGPU is a modern graphics and compute API for the web that provides low-level, high-performance access to GPU hardware. Designed from the ground up to align with contemporary GPU architecture, WebGPU maps efficiently to native APIs including Vulkan (cross-platform), Metal (Apple), and Direct3D 12 (Windows).
 
-As of 2025, WebGPU is supported across all major browsers: Chrome, Edge, Firefox 141+, and Safari 26+. This broad support makes it a viable choice for production web applications requiring GPU acceleration.
+:::note[Browser Support (2025)]
+WebGPU is supported across all major browsers: Chrome, Edge, Firefox 141+, and Safari 26+. This broad support makes it viable for production web applications requiring GPU acceleration.
+:::
 
 WebGPU enables high-fidelity 3D rendering with advanced techniques like physically-based rendering and complex post-processing pipelines. It treats general-purpose GPU computation (GPGPU) as a first-class feature, making it suitable for machine learning inference, scientific simulations, data visualization, and video processing.
 
@@ -16,7 +18,7 @@ WebGPU enables high-fidelity 3D rendering with advanced techniques like physical
 
 The GPUAdapter represents physical GPU hardware and serves as the entry point for capability discovery. It abstracts the underlying graphics hardware and driver while exposing machine capabilities through a privacy-conscious binning mechanism.
 
-```typescript
+```typescript title="Requesting an adapter"
 const adapter = await navigator.gpu.requestAdapter({
   powerPreference: "high-performance",
   forceFallbackAdapter: false,
@@ -27,13 +29,15 @@ if (!adapter) {
 }
 ```
 
-The `powerPreference` option specifies whether to prefer low-power (integrated GPU) or high-performance (discrete GPU) hardware.
+:::tip[Power Preference]
+Use `"high-performance"` for discrete GPUs (better for games/compute) or `"low-power"` for integrated GPUs (better for battery life).
+:::
 
 ### Querying Capabilities
 
 Adapters expose capabilities through two interfaces:
 
-```typescript
+```typescript title="Checking features and limits"
 // Feature enumeration - optional capabilities as strings
 console.log("Features:", Array.from(adapter.features));
 
@@ -50,7 +54,7 @@ console.log("Max buffer size:", adapter.limits.maxBufferSize);
 
 The GPUDevice is a logical connection to the GPU through which almost all WebGPU operations are performed. While the adapter represents physical hardware, the device provides an isolated, secure interface for creating resources and submitting work.
 
-```typescript
+```typescript title="Creating a device with features"
 const device = await adapter.requestDevice({
   requiredFeatures: ["texture-compression-bc"],
   requiredLimits: {
@@ -59,20 +63,22 @@ const device = await adapter.requestDevice({
 });
 ```
 
-If any requested feature is unavailable or any limit exceeds the adapter's maximum, the Promise rejects. Check adapter capabilities before requesting.
+:::caution[Feature Requests]
+If any requested feature is unavailable or any limit exceeds the adapter's maximum, the Promise rejects. Always check adapter capabilities before requesting.
+:::
 
 The device manages all GPU resources:
-- Buffers (GPU-accessible memory)
-- Textures (image data)
-- Shader modules (compiled WGSL)
-- Pipelines (complete rendering/compute state)
-- Bind groups (resource binding configuration)
+- **Buffers** — GPU-accessible memory
+- **Textures** — Image data
+- **Shader modules** — Compiled WGSL
+- **Pipelines** — Complete rendering/compute state
+- **Bind groups** — Resource binding configuration
 
 ### Device Lost Handling
 
-A device can become "lost" due to GPU driver crashes, system sleep/wake cycles, or hardware removal. Handle this by monitoring the `device.lost` promise and setting up error handlers immediately after device creation:
+A device can become "lost" due to GPU driver crashes, system sleep/wake cycles, or hardware removal.
 
-```typescript
+```typescript title="Handling device loss" {3-6}
 const device = await adapter.requestDevice();
 
 device.lost.then((info) => {
@@ -87,13 +93,17 @@ device.addEventListener("uncapturederror", (event) => {
 });
 ```
 
+:::danger[Always Handle Device Loss]
+Set up `device.lost` and error handlers immediately after device creation. Without these handlers, your application will fail silently when the GPU becomes unavailable.
+:::
+
 ## GPUQueue: Command Execution
 
 The GPUQueue controls submission and execution of GPU commands. Each device has a default queue accessible via `device.queue`.
 
 ### Submitting Commands
 
-```typescript
+```typescript title="Basic command submission"
 const commandEncoder = device.createCommandEncoder();
 // ... encode commands ...
 const commandBuffer = commandEncoder.finish();
@@ -107,7 +117,7 @@ Multiple command buffers in a single submit execute in sequence.
 
 For small to medium updates, use direct write methods:
 
-```typescript
+```typescript title="Writing data to GPU resources"
 // Write to buffer
 const uniformData = new Float32Array([1.0, 0.0, 0.0, 1.0]);
 device.queue.writeBuffer(uniformBuffer, 0, uniformData);
@@ -125,7 +135,7 @@ device.queue.writeTexture(
 
 Commands execute asynchronously. Use `onSubmittedWorkDone()` when you need to wait:
 
-```typescript
+```typescript title="Waiting for GPU completion"
 await device.queue.onSubmittedWorkDone();
 console.log("All GPU work completed");
 ```
@@ -134,7 +144,7 @@ console.log("All GPU work completed");
 
 A complete, production-ready initialization:
 
-```typescript
+```typescript title="Complete WebGPU initialization" {3-5,14-16,21-26}
 async function initializeWebGPU(): Promise<{
   adapter: GPUAdapter;
   device: GPUDevice;
@@ -185,7 +195,7 @@ async function initializeWebGPU(): Promise<{
 
 WebGPU uses an explicit, immutable pipeline object model. Unlike WebGL's state machine where you configure global state incrementally, WebGPU pipelines encapsulate complete GPU state at creation time.
 
-```typescript
+```typescript title="Creating and using a render pipeline"
 const pipeline = device.createRenderPipeline({
   layout: pipelineLayout,
   vertex: {
@@ -208,11 +218,13 @@ passEncoder.setBindGroup(0, bindGroup);
 passEncoder.drawIndexed(36);
 ```
 
+:::tip[Pipeline Benefits]
 This architecture provides:
-- **Upfront validation**: State validated once at creation, not per-draw
-- **Parallelism**: Pipelines can be created on multiple threads
-- **Predictability**: No hidden state; each pipeline is self-contained
-- **Performance**: Drivers optimize aggressively with complete state visibility
+- **Upfront validation** — State validated once at creation, not per-draw
+- **Parallelism** — Pipelines can be created on multiple threads
+- **Predictability** — No hidden state; each pipeline is self-contained
+- **Performance** — Drivers optimize aggressively with complete state visibility
+:::
 
 ## Features and Limits
 
@@ -220,7 +232,7 @@ This architecture provides:
 
 Optional capabilities checked via `adapter.features`:
 
-```typescript
+```typescript title="Checking optional features"
 const featureChecks = {
   textureCompression: {
     bc: adapter.features.has("texture-compression-bc"),
@@ -233,9 +245,7 @@ const featureChecks = {
 };
 ```
 
-Always request features explicitly in `requestDevice()`:
-
-```typescript
+```typescript title="Requesting available features"
 async function createDeviceWithFeatures(adapter: GPUAdapter) {
   const desired: GPUFeatureName[] = ["texture-compression-bc", "shader-f16"];
   const available = desired.filter((f) => adapter.features.has(f));
@@ -250,7 +260,7 @@ async function createDeviceWithFeatures(adapter: GPUAdapter) {
 
 Numeric constraints queried via `adapter.limits`:
 
-```typescript
+```typescript title="Querying device limits"
 const limits = adapter.limits;
 console.log({
   maxTextureDimension2D: limits.maxTextureDimension2D,
@@ -260,9 +270,7 @@ console.log({
 });
 ```
 
-Request higher limits only up to adapter maximums:
-
-```typescript
+```typescript title="Requesting higher limits" {1-2}
 const requestedLimit = 1024 * 1024 * 1024;
 const actualLimit = Math.min(requestedLimit, adapter.limits.maxStorageBufferBindingSize);
 
@@ -277,7 +285,7 @@ const device = await adapter.requestDevice({
 
 Resources are created through device methods with descriptor objects:
 
-```typescript
+```typescript title="Creating buffers and textures"
 const vertexBuffer = device.createBuffer({
   size: 1024,
   usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -295,18 +303,30 @@ const texture = device.createTexture({
 
 The `usage` parameter declares how resources will be used. WebGPU validates actual usage matches declared usage.
 
-**Buffer Usage Flags**:
-- `COPY_SRC` / `COPY_DST`: Copy operations
-- `MAP_READ` / `MAP_WRITE`: CPU mapping
-- `VERTEX` / `INDEX`: Geometry data
-- `UNIFORM`: Read-only shader constants
-- `STORAGE`: Read-write shader access
+<details>
+<summary>**Buffer Usage Flags**</summary>
 
-**Texture Usage Flags**:
-- `COPY_SRC` / `COPY_DST`: Copy operations
-- `TEXTURE_BINDING`: Shader sampling
-- `STORAGE_BINDING`: Shader storage access
-- `RENDER_ATTACHMENT`: Render target
+| Flag | Purpose |
+|------|---------|
+| `COPY_SRC` / `COPY_DST` | Copy operations |
+| `MAP_READ` / `MAP_WRITE` | CPU mapping |
+| `VERTEX` / `INDEX` | Geometry data |
+| `UNIFORM` | Read-only shader constants |
+| `STORAGE` | Read-write shader access |
+
+</details>
+
+<details>
+<summary>**Texture Usage Flags**</summary>
+
+| Flag | Purpose |
+|------|---------|
+| `COPY_SRC` / `COPY_DST` | Copy operations |
+| `TEXTURE_BINDING` | Shader sampling |
+| `STORAGE_BINDING` | Shader storage access |
+| `RENDER_ATTACHMENT` | Render target |
+
+</details>
 
 Combine flags with bitwise OR: `GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST`
 
@@ -314,25 +334,20 @@ Combine flags with bitwise OR: `GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST`
 
 Explicitly destroy large resources when done:
 
-```typescript
+```typescript title="Resource cleanup"
 buffer.destroy();
 texture.destroy();
 ```
 
-For loops creating many resources, explicit destruction prevents GPU memory accumulation:
-
-```typescript
-// Explicit cleanup prevents memory buildup
-const buffer = device.createBuffer({ size: 1024 * 1024, usage: GPUBufferUsage.STORAGE });
-// Use buffer...
-buffer.destroy();
-```
+:::caution[Memory Management]
+For loops creating many resources, explicit destruction prevents GPU memory accumulation. Always destroy resources you no longer need.
+:::
 
 ### Error Scopes
 
 Use error scopes for expected failure points:
 
-```typescript
+```typescript title="Catching creation errors"
 device.pushErrorScope("validation");
 const buffer = device.createBuffer({ /* potentially invalid */ });
 const error = await device.popErrorScope();
@@ -343,13 +358,11 @@ if (error) {
 
 ## GPU Process Architecture
 
-WebGPU runs in a dedicated GPU process separate from the content process where JavaScript executes. This architecture has important implications:
+WebGPU runs in a dedicated GPU process separate from the content process where JavaScript executes.
 
-- **Object Handles**: JavaScript objects like GPUDevice and GPUBuffer are lightweight proxies to objects in the GPU process
-- **Asynchronous Operations**: Cross-process communication makes most operations inherently asynchronous
-- **Security Boundary**: The GPU process sandbox contains potential exploits
-- **Privacy Protection**: Adapter capability binning limits fingerprinting to 32 unique configurations
-
----
-
-This documentation covers the foundational concepts for working effectively with WebGPU. Understanding adapters, devices, queues, stateless pipelines, and resource lifecycle equips you to build high-performance GPU-accelerated web applications.
+:::note[Architecture Implications]
+- **Object Handles** — JavaScript objects like GPUDevice and GPUBuffer are lightweight proxies to objects in the GPU process
+- **Asynchronous Operations** — Cross-process communication makes most operations inherently asynchronous
+- **Security Boundary** — The GPU process sandbox contains potential exploits
+- **Privacy Protection** — Adapter capability binning limits fingerprinting to 32 unique configurations
+:::
