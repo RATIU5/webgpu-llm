@@ -456,6 +456,53 @@ loop {
 }
 ```
 
+### Loop with Continuing
+
+The `continuing` block executes at the end of each iteration (like `for` loop increment):
+
+```wgsl title="Loop with continuing block"
+var i = 0;
+loop {
+    if (i >= 10) { break; }
+
+    // Loop body
+    sum += data[i];
+
+    continuing {
+        i++;  // Executes after each iteration
+    }
+}
+```
+
+### break if
+
+Early exit with condition in `continuing` block:
+
+```wgsl title="break if syntax"
+var i = 0;
+loop {
+    sum += data[i];
+
+    continuing {
+        i++;
+        break if i >= limit;  // Exit after continuing
+    }
+}
+```
+
+### continue
+
+Skip to next iteration:
+
+```wgsl title="continue statement"
+for (var i = 0; i < 100; i++) {
+    if (data[i] < 0.0) {
+        continue;  // Skip negative values
+    }
+    sum += data[i];
+}
+```
+
 ### select()
 
 Branchless conditional (often faster than `if`):
@@ -625,4 +672,122 @@ fn efficient(@builtin(local_invocation_index) idx: u32) {
     let value = cache[idx];  // Fast access
 }
 ```
+:::
+
+## Pointers and References
+
+WGSL supports pointers for passing variables by reference.
+
+### Pointer Syntax
+
+```wgsl title="Pointer types"
+// ptr<address_space, type, access_mode>
+fn increment(p: ptr<function, i32>) {
+    *p = *p + 1;  // Dereference with *
+}
+
+fn main() {
+    var x: i32 = 5;
+    increment(&x);  // Pass address with &
+    // x is now 6
+}
+```
+
+### Address Spaces
+
+| Space | Description | Pointer Access |
+|-------|-------------|----------------|
+| `function` | Local variables | `ptr<function, T>` |
+| `private` | Per-invocation globals | `ptr<private, T>` |
+| `workgroup` | Shared within workgroup | `ptr<workgroup, T>` |
+| `storage` | Buffer storage | `ptr<storage, T, read>` or `read_write` |
+| `uniform` | Uniform buffer | `ptr<uniform, T>` |
+
+```wgsl title="Storage pointer example"
+fn process(data: ptr<storage, array<f32>, read_write>, idx: u32) {
+    (*data)[idx] *= 2.0;
+}
+```
+
+:::caution[Pointer Restrictions]
+- Cannot store pointers in variables (no pointer-to-pointer)
+- Cannot return pointers from functions
+- Pointers must point to concrete memory locations
+:::
+
+## Constants and Overrides
+
+### const
+
+Compile-time constant expressions:
+
+```wgsl title="const declarations"
+const PI: f32 = 3.14159265;
+const TAU: f32 = PI * 2.0;
+const WORKGROUP_SIZE: u32 = 256u;
+
+// Const arrays
+const VERTICES: array<vec2f, 3> = array<vec2f, 3>(
+    vec2f(0.0, 0.5),
+    vec2f(-0.5, -0.5),
+    vec2f(0.5, -0.5)
+);
+```
+
+### override
+
+Pipeline-overridable constants (set at pipeline creation):
+
+```wgsl title="override declarations"
+@id(0) override BLOCK_SIZE: u32 = 64u;
+@id(1) override THRESHOLD: f32 = 0.5;
+override USE_FAST_PATH: bool = true;  // ID auto-assigned
+
+@compute @workgroup_size(BLOCK_SIZE)
+fn main() {
+    if (USE_FAST_PATH) {
+        // Fast path
+    }
+}
+```
+
+```javascript title="Override at pipeline creation"
+const pipeline = device.createComputePipeline({
+  layout: "auto",
+  compute: {
+    module: shaderModule,
+    entryPoint: "main",
+    constants: {
+      0: 128,     // BLOCK_SIZE = 128
+      1: 0.75,    // THRESHOLD = 0.75
+    },
+  },
+});
+```
+
+:::tip[Use Cases for Override]
+- Workgroup size tuning per GPU
+- Feature flags without shader recompilation
+- Quality/performance trade-offs
+:::
+
+### const_assert
+
+Compile-time assertions for catching errors early:
+
+```wgsl title="const_assert examples"
+const BUFFER_SIZE: u32 = 1024u;
+const_assert BUFFER_SIZE >= 256u;  // Fails compilation if false
+const_assert BUFFER_SIZE % 64u == 0u;  // Must be multiple of 64
+
+// Validate struct alignment
+const_assert sizeof(MyStruct) == 64u;
+```
+
+## Resources
+
+:::note[Official References]
+- [WGSL Specification](https://www.w3.org/TR/WGSL/)
+- [Tour of WGSL](https://google.github.io/tour-of-wgsl/)
+- [WebGPU Fundamentals: WGSL](https://webgpufundamentals.org/webgpu/lessons/webgpu-wgsl.html)
 :::
