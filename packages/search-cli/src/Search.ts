@@ -44,7 +44,10 @@ export class SearchApiError extends Data.TaggedError("SearchApiError")<{
   readonly retryAfter?: number | undefined;
 }> {}
 
-export type SearchError = SearchRequestError | SearchParseError | SearchApiError;
+export type SearchError =
+  | SearchRequestError
+  | SearchParseError
+  | SearchApiError;
 
 export class SearchClient extends Context.Tag("SearchClient")<
   SearchClient,
@@ -68,9 +71,10 @@ export const SearchClientLive = Layer.effect(
           Effect.flatMap((response) =>
             Effect.gen(function* () {
               if (response.status >= 400) {
-                const errorBody = yield* HttpClientResponse.schemaBodyJson(
-                  ApiErrorResponse,
-                )(response);
+                const errorBody =
+                  yield* HttpClientResponse.schemaBodyJson(ApiErrorResponse)(
+                    response,
+                  );
                 return yield* new SearchApiError(errorBody);
               }
               return yield* HttpClientResponse.schemaBodyJson(SearchResponse)(
