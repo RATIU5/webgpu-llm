@@ -12,7 +12,7 @@ export const SearchResult = Schema.Struct({
   title: Schema.String,
   excerpt: Schema.String,
   score: Schema.Number,
-  llmsTxt: Schema.NullOr(Schema.String),
+  llmsTxt: Schema.String,
 });
 
 export const SearchResponse = Schema.Struct({

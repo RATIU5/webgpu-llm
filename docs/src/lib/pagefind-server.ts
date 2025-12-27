@@ -52,6 +52,8 @@ let initPromise: Promise<PagefindModule> | null = null;
 
 // O(1) lookup map: slugified title -> llms.txt URL
 const llmsTxtMap = new Map<string, string>();
+// Set of available llms-txt file slugs for URL-based lookup
+const llmsTxtFiles = new Set<string>();
 let llmsTxtInitialized = false;
 
 function createFileFetch(baseDir: string) {
@@ -107,6 +109,8 @@ async function initLlmsTxtMap(clientDir: string): Promise<void> {
   if (llmsTxtInitialized) return;
 
   const llmsTxtPath = path.join(clientDir, "llms.txt");
+  const llmsTxtDir = path.join(clientDir, "_llms-txt");
+
   try {
     const content = await fs.readFile(llmsTxtPath, "utf-8");
 
@@ -115,26 +119,48 @@ async function initLlmsTxtMap(clientDir: string): Promise<void> {
     const linkRegex = /\[([^\]]+)\]\([^)]*\/_llms-txt\/([^)]+\.txt)\)/g;
     for (const match of content.matchAll(linkRegex)) {
       const title = match[1];
-      const llmsTxtUrl = `/_llms-txt/${match[2]}`;
+      const filename = match[2];
+      const llmsTxtUrl = `/_llms-txt/${filename}`;
       const titleSlug = slugify(title);
 
       llmsTxtMap.set(titleSlug, llmsTxtUrl);
+      // Also store the filename slug for URL-based lookup
+      llmsTxtFiles.add(filename.replace(".txt", ""));
     }
 
     llmsTxtInitialized = true;
   } catch {
+    // Try to read the _llms-txt directory directly as fallback
+    try {
+      const files = await fs.readdir(llmsTxtDir);
+      for (const file of files) {
+        if (file.endsWith(".txt")) {
+          llmsTxtFiles.add(file.replace(".txt", ""));
+        }
+      }
+    } catch {
+      // Directory doesn't exist, continue without it
+    }
     llmsTxtInitialized = true;
   }
 }
 
-function findLlmsTxtUrl(title: string): string | null {
-  if (llmsTxtMap.size === 0) return null;
-
+function findLlmsTxtUrl(title: string, pageUrl: string): string | null {
   const titleSlug = slugify(title);
 
-  // O(1) exact lookup
+  // O(1) exact lookup by title
   const exactMatch = llmsTxtMap.get(titleSlug);
   if (exactMatch) return exactMatch;
+
+  // Try URL-based lookup: extract the last path segment
+  // e.g., /fundamentals/error-handling-validation/ -> error-handling-validation
+  const urlSlug = pageUrl
+    .replace(/\/$/, "")
+    .split("/")
+    .pop();
+  if (urlSlug && llmsTxtFiles.has(urlSlug)) {
+    return `/_llms-txt/${urlSlug}.txt`;
+  }
 
   // Fallback: check if any key contains the title slug or vice versa
   for (const [key, url] of llmsTxtMap) {
@@ -211,7 +237,7 @@ export async function searchPagefind(
     title: string;
     excerpt: string;
     score: number;
-    llmsTxt: string | null;
+    llmsTxt: string;
   }>;
   totalResults: number;
 }> {
@@ -227,24 +253,30 @@ export async function searchPagefind(
     const pagefind = await initPagefind(dir);
     const searchResponse = await pagefind.search(query);
 
-    const results = await Promise.all(
-      searchResponse.results.slice(0, 10).map(async (result) => {
+    const allResults = await Promise.all(
+      searchResponse.results.slice(0, 20).map(async (result) => {
         const data = await result.data();
         const url = normalizeUrl(data.raw_url || data.url, clientDir);
         const title = data.meta?.title || "Untitled";
+        const llmsTxt = findLlmsTxtUrl(title, url);
         return {
           url,
           title,
           excerpt: data.excerpt,
           score: result.score,
-          llmsTxt: findLlmsTxtUrl(title),
+          llmsTxt,
         };
       }),
     );
 
+    // Filter out results without llms-txt files and limit to 10
+    const results = allResults
+      .filter((r): r is typeof r & { llmsTxt: string } => r.llmsTxt !== null)
+      .slice(0, 10);
+
     return {
       results,
-      totalResults: searchResponse.unfilteredResultCount,
+      totalResults: results.length,
     };
   } finally {
     globalThis.fetch = originalFetch;
