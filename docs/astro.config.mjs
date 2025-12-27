@@ -44,10 +44,6 @@ export default defineConfig({
           autogenerate: { directory: "resources-and-binding" },
         },
         {
-          label: "Practical Applications",
-          autogenerate: { directory: "practical-applications" },
-        },
-        {
           label: "Advanced",
           autogenerate: { directory: "advanced" },
         },
@@ -213,14 +209,64 @@ export default defineConfig({
               paths: ["resources-and-binding/textures-samplers"],
             },
             {
-              label: "Building a Particle System",
-              description: "Step-by-step compute shader example with TypeGPU",
-              paths: ["practical-applications/particle-system-tutorial"],
+              label: "WGSL Builtin Functions",
+              description:
+                "Reference for math, vector, texture, and synchronization functions in WGSL",
+              paths: ["fundamentals/wgsl-builtin-functions"],
             },
             {
-              label: "Real-time Graphics Rendering",
-              description: "Creating interactive 3D visualizations",
-              paths: ["practical-applications/realtime-graphics-rendering"],
+              label: "TypeGPU Tooling",
+              description:
+                "Build tools and CLI utilities for TypeGPU development",
+              paths: ["fundamentals/typegpu-tooling"],
+            },
+            {
+              label: "TypeGPU Utilities",
+              description:
+                "Noise generation, color spaces, and helper packages for TypeGPU",
+              paths: ["fundamentals/typegpu-utilities"],
+            },
+            {
+              label: "Loading Images and Textures",
+              description:
+                "Loading images, video frames, and compressed textures into WebGPU",
+              paths: ["data-and-buffers/loading-images-textures"],
+            },
+            {
+              label: "Instancing and Indirect Drawing",
+              description:
+                "Efficient rendering of many objects with instancing and GPU-driven draws",
+              paths: ["shaders-and-pipelines/instancing-indirect-drawing"],
+            },
+            {
+              label: "Render Bundles",
+              description:
+                "Pre-recorded command sequences for reducing CPU overhead",
+              paths: ["shaders-and-pipelines/render-bundles"],
+            },
+            {
+              label: "Storage Textures",
+              description:
+                "Direct texture writes from compute and fragment shaders",
+              paths: ["resources-and-binding/storage-textures"],
+            },
+            {
+              label: "Multisampling (MSAA)",
+              description:
+                "Anti-aliasing with multisample render targets",
+              paths: ["resources-and-binding/multisampling-msaa"],
+            },
+            {
+              label: "React Integration",
+              description:
+                "WebGPU patterns for React web and React Native applications",
+              paths: ["advanced/react-integration"],
+            },
+            {
+              label: "Camera and View Matrices",
+              description:
+                "Camera math, projection matrices, and wgpu-matrix usage",
+              paths: ["misc/camera-view-matrices"],
             },
             {
               label: "Advanced TypeGPU Patterns",
