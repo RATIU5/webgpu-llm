@@ -1,5 +1,11 @@
 # @ratiu5/starlight-search-cli
 
+## 0.0.6
+
+### Patch Changes
+
+- 92be0ec: Updated package.json version detection to look in same directory first, then up one directory
+
 ## 0.0.5
 
 ### Patch Changes
