@@ -154,10 +154,7 @@ function findLlmsTxtUrl(title: string, pageUrl: string): string | null {
 
   // Try URL-based lookup: extract the last path segment
   // e.g., /fundamentals/error-handling-validation/ -> error-handling-validation
-  const urlSlug = pageUrl
-    .replace(/\/$/, "")
-    .split("/")
-    .pop();
+  const urlSlug = pageUrl.replace(/\/$/, "").split("/").pop();
   if (urlSlug && llmsTxtFiles.has(urlSlug)) {
     return `/_llms-txt/${urlSlug}.txt`;
   }
