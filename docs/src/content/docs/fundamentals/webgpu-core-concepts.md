@@ -6,24 +6,22 @@ sidebar:
 
 ## Overview
 
-**WebGPU** is a modern graphics and compute API for the web that provides low-level, high-performance access to GPU hardware. Unlike its predecessor WebGL, which traces its lineage back to OpenGL ES from the 1990s, WebGPU was designed from the ground up to align with contemporary GPU architecture and the design patterns of modern native graphics APIs. This fundamental reimagining addresses the limitations of WebGL, which doesn't match the design of modern GPUs and causes both CPU and GPU performance bottlenecks.
+WebGPU is a modern graphics and compute API for the web that provides low-level, high-performance access to GPU hardware. Designed from the ground up to align with contemporary GPU architecture, WebGPU maps efficiently to native APIs including Vulkan (cross-platform), Metal (Apple), and Direct3D 12 (Windows).
 
-WebGPU was architected to support multiple native GPU APIs as implementation targets, specifically **Vulkan** (cross-platform), **Metal** (Apple platforms), and **Direct3D 12** (Windows). This multi-API design prevents vendor lock-in while ensuring broad platform compatibility. By providing a unified abstraction layer over these modern APIs, WebGPU enables web developers to harness the full power of contemporary graphics hardware without being constrained by legacy API designs. The specification carefully balances portability across different GPU architectures with the performance characteristics that modern applications demand.
+:::note[Browser Support (2025)]
+WebGPU is supported across all major browsers: Chrome, Edge, Firefox 141+, and Safari 26+. This broad support makes it viable for production web applications requiring GPU acceleration.
+:::
 
-For modern web applications, WebGPU matters because it unlocks capabilities that were previously impractical or impossible on the web. It enables high-fidelity 3D rendering with advanced techniques like physically-based rendering, real-time ray tracing effects, and complex post-processing pipelines. Beyond graphics, WebGPU treats **general-purpose GPU computation** (GPGPU) as a first-class feature rather than an afterthought, making it suitable for machine learning inference, scientific simulations, data visualization, video processing, and other compute-intensive workloads. This positions the web platform as a viable target for professional-grade graphics applications and computational tools that previously required native development.
+WebGPU enables high-fidelity 3D rendering with advanced techniques like physically-based rendering and complex post-processing pipelines. It treats general-purpose GPU computation (GPGPU) as a first-class feature, making it suitable for machine learning inference, scientific simulations, data visualization, and video processing.
 
-## Key Concepts
+## GPUAdapter: Hardware Abstraction
 
-### GPUAdapter: Hardware Abstraction
+The GPUAdapter represents physical GPU hardware and serves as the entry point for capability discovery. It abstracts the underlying graphics hardware and driver while exposing machine capabilities through a privacy-conscious binning mechanism.
 
-The **GPUAdapter** represents the physical GPU hardware and serves as the primary entry point for capability discovery in WebGPU. An adapter abstracts the underlying graphics hardware and driver, providing a consistent interface regardless of whether the GPU is an integrated chip, discrete card, or software-based renderer. The adapter's primary responsibility is to expose machine capabilities while maintaining user privacy through a clever binning mechanism that limits distinguishable configurations to at most 32 unique combinations.
-
-To obtain an adapter, you use the `navigator.gpu.requestAdapter()` method, which returns a Promise that resolves to a GPUAdapter instance or null if no suitable adapter is available:
-
-```typescript
+```typescript title="Requesting an adapter"
 const adapter = await navigator.gpu.requestAdapter({
-  powerPreference: "high-performance", // 'low-power' or 'high-performance'
-  forceFallbackAdapter: false, // Whether to request software rendering
+  powerPreference: "high-performance",
+  forceFallbackAdapter: false,
 });
 
 if (!adapter) {
@@ -31,73 +29,81 @@ if (!adapter) {
 }
 ```
 
-The **powerPreference** option allows you to specify whether you prefer low-power (typically integrated GPUs for battery efficiency) or high-performance (typically discrete GPUs for maximum rendering capability). The browser will attempt to honor this preference but is not required to do so.
+:::tip[Power Preference]
+Use `"high-performance"` for discrete GPUs (better for games/compute) or `"low-power"` for integrated GPUs (better for battery life).
+:::
 
-Once you have an adapter, you can query its capabilities through two primary interfaces:
+### Querying Capabilities
 
-**Feature Enumeration**: The `adapter.features` property returns a Set-like object containing strings identifying optional capabilities supported by this particular GPU and driver combination. Features might include extensions like `'texture-compression-bc'`, `'shader-f16'`, or `'depth-clip-control'`. Your application should check for required features before proceeding:
+Adapters expose capabilities through two interfaces:
 
-```typescript
-console.log("Available features:", Array.from(adapter.features));
+```typescript title="Checking features and limits"
+// Feature enumeration - optional capabilities as strings
+console.log("Features:", Array.from(adapter.features));
 
 if (adapter.features.has("texture-compression-bc")) {
-  // Can use BC compressed textures
+  // BC compressed textures supported
 }
+
+// Capability limits - numeric constraints
+console.log("Max texture size:", adapter.limits.maxTextureDimension2D);
+console.log("Max buffer size:", adapter.limits.maxBufferSize);
 ```
 
-**Capability Limits**: The `adapter.limits` property exposes an object containing numeric limits for various resources and operations. These limits define constraints like maximum texture dimensions (`maxTextureDimension2D`), maximum buffer size (`maxBufferSize`), maximum number of bind groups (`maxBindGroups`), and compute workgroup dimensions. Understanding these limits is crucial for writing portable code that works across different hardware tiers.
+## GPUDevice: Logical Connection
 
-### GPUDevice: Logical Device for Resource Creation
+The GPUDevice is a logical connection to the GPU through which almost all WebGPU operations are performed. While the adapter represents physical hardware, the device provides an isolated, secure interface for creating resources and submitting work.
 
-The **GPUDevice** represents a logical connection to the GPU and is the central object through which almost all WebGPU operations are performed. While the adapter represents physical hardware, the device provides an isolated, secure interface for your application to create resources and submit work to the GPU. This separation enables multiple applications or contexts to share the same physical GPU safely.
-
-You obtain a device by calling `requestDevice()` on an adapter:
-
-```typescript
+```typescript title="Creating a device with features"
 const device = await adapter.requestDevice({
-  requiredFeatures: ["texture-compression-bc"], // Features your app requires
+  requiredFeatures: ["texture-compression-bc"],
   requiredLimits: {
-    maxStorageBufferBindingSize: 512 * 1024 * 1024, // 512 MB
-    maxComputeWorkgroupSizeX: 256,
+    maxStorageBufferBindingSize: 512 * 1024 * 1024,
   },
 });
 ```
 
-The **requiredFeatures** array specifies optional features your application needs to function. If any requested feature is unavailable, the Promise will reject. Similarly, **requiredLimits** allows you to request higher limits than the adapter's defaults. Limits can only be increased up to the adapter's maximum supported values.
+:::caution[Feature Requests]
+If any requested feature is unavailable or any limit exceeds the adapter's maximum, the Promise rejects. Always check adapter capabilities before requesting.
+:::
 
-The device manages all GPU resources including:
+The device manages all GPU resources:
+- **Buffers** — GPU-accessible memory
+- **Textures** — Image data
+- **Shader modules** — Compiled WGSL
+- **Pipelines** — Complete rendering/compute state
+- **Bind groups** — Resource binding configuration
 
-- **Buffers** (GPU-accessible memory regions)
-- **Textures** (image data containers)
-- **Samplers** (texture sampling configuration)
-- **Shader modules** (compiled WGSL code)
-- **Pipeline layouts** and **bind group layouts** (resource binding configuration)
-- **Render pipelines** and **compute pipelines** (complete rendering/compute state)
+### Device Lost Handling
 
-One of the most critical aspects of device management is handling the **device lost** event. A device can become "lost" due to various reasons: GPU driver crashes, system sleep/wake cycles, GPU being removed, or TDR (Timeout Detection and Recovery) events. When a device is lost, it can no longer create new resources or submit commands, though existing resources remain accessible for cleanup:
+A device can become "lost" due to GPU driver crashes, system sleep/wake cycles, or hardware removal.
 
-```typescript
+```typescript title="Handling device loss" {3-6}
+const device = await adapter.requestDevice();
+
 device.lost.then((info) => {
   console.error(`Device lost: ${info.message}`);
-  console.log(`Reason: ${info.reason}`); // 'destroyed' or 'unknown'
-
-  // Attempt to reinitialize
-  initializeWebGPU();
+  if (info.reason !== "destroyed") {
+    initializeWebGPU(); // Attempt recovery
+  }
 });
 
-// Explicit cleanup
-device.destroy(); // Voluntarily lose the device
+device.addEventListener("uncapturederror", (event) => {
+  console.error("Uncaptured WebGPU error:", event.error);
+});
 ```
 
-### GPUQueue: Command Submission and Execution
+:::danger[Always Handle Device Loss]
+Set up `device.lost` and error handlers immediately after device creation. Without these handlers, your application will fail silently when the GPU becomes unavailable.
+:::
 
-The **GPUQueue** controls the submission and execution of GPU commands. Each device has a default queue accessible via `device.queue` that handles both graphics rendering and compute operations. The queue operates on its own timeline, separate from JavaScript execution, enabling asynchronous work submission.
+## GPUQueue: Command Execution
 
-The queue provides three primary methods:
+The GPUQueue controls submission and execution of GPU commands. Each device has a default queue accessible via `device.queue`.
 
-**1. submit()** - Submits command buffers for execution:
+### Submitting Commands
 
-```typescript
+```typescript title="Basic command submission"
 const commandEncoder = device.createCommandEncoder();
 // ... encode commands ...
 const commandBuffer = commandEncoder.finish();
@@ -105,95 +111,58 @@ const commandBuffer = commandEncoder.finish();
 device.queue.submit([commandBuffer]);
 ```
 
-Multiple command buffers can be submitted in a single call, and they will execute in sequence. This batching is more efficient than submitting individual buffers separately.
+Multiple command buffers in a single submit execute in sequence.
 
-**2. writeBuffer()** - Directly writes data to a buffer without requiring staging:
+### Direct Data Writes
 
-```typescript
+For small to medium updates, use direct write methods:
+
+```typescript title="Writing data to GPU resources"
+// Write to buffer
 const uniformData = new Float32Array([1.0, 0.0, 0.0, 1.0]);
-device.queue.writeBuffer(
-  uniformBuffer,
-  0, // offset in bytes
-  uniformData.buffer,
-  0, // data offset
-  uniformData.byteLength,
-);
-```
+device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
-This is the recommended way to update small to medium-sized buffers from CPU data, as it's more efficient than creating temporary staging buffers.
-
-**3. writeTexture()** - Directly writes image data to textures:
-
-```typescript
+// Write to texture
 device.queue.writeTexture(
   { texture: gpuTexture },
   imageData,
   { bytesPerRow: 256 * 4 },
-  { width: 256, height: 256 },
+  { width: 256, height: 256 }
 );
 ```
 
-The queue also provides `onSubmittedWorkDone()`, which returns a Promise that resolves when all work submitted before the call has completed execution on the GPU:
+### Synchronization
 
-```typescript
+Commands execute asynchronously. Use `onSubmittedWorkDone()` when you need to wait:
+
+```typescript title="Waiting for GPU completion"
 await device.queue.onSubmittedWorkDone();
-console.log("All previous GPU work completed");
+console.log("All GPU work completed");
 ```
-
-**Execution Ordering**: Commands submitted to the queue execute in order. Within a single command buffer, commands execute sequentially. Multiple command buffers in one submit call also execute sequentially. However, the queue timeline is completely asynchronous relative to JavaScript execution—submitting work returns immediately, and actual execution happens later on the GPU.
-
-### GPU Process Architecture: Multi-Process Isolation
-
-WebGPU's architecture is fundamentally shaped by browser security requirements and the realities of GPU driver stability. Modern browsers use multi-process architecture to isolate different origins and prevent one page from compromising another. GPU drivers, however, need elevated privileges including access to additional kernel syscalls, and historically have been prone to hangs and crashes that can affect the entire system.
-
-To address these challenges, WebGPU implementations typically run in a dedicated **GPU process** separate from both the content process (where your JavaScript runs) and the browser UI process. This architectural decision has several important implications:
-
-**Object Handles**: WebGPU objects in JavaScript (like GPUDevice, GPUBuffer, GPUTexture) function primarily as handles or references to objects that actually live in the GPU process. When you call `device.createBuffer()`, the JavaScript object you receive is a lightweight proxy. The actual buffer allocation and management happens in the GPU process.
-
-**Asynchronous Communication**: Because objects exist across process boundaries, all validation and most operations are inherently asynchronous. This is why WebGPU embraces asynchronous patterns throughout its API design—they match the underlying implementation reality rather than forcing expensive synchronization.
-
-**Security Model**: The GPU process acts as a security boundary. Even if malicious shader code or buffer contents could theoretically exploit a GPU driver vulnerability, the exploit would be contained within the GPU process sandbox. The content process cannot directly access GPU memory or execute arbitrary GPU commands—all requests must go through the validated WebGPU API surface.
-
-**Privacy Considerations**: The adapter capability binning mentioned earlier (limiting distinguishable configurations to 32 buckets) prevents fingerprinting based on precise GPU capabilities. This balance allows applications to discover meaningful capability differences while preventing the creation of unique device fingerprints.
 
 ## Initialization Flow
 
-Initializing WebGPU follows a consistent asynchronous pattern that ensures proper resource acquisition and error handling. The process moves through three stages: checking support, requesting an adapter, and creating a device. Here's a complete, production-ready initialization example:
+A complete, production-ready initialization:
 
-```typescript
+```typescript title="Complete WebGPU initialization" {3-5,14-16,21-26}
 async function initializeWebGPU(): Promise<{
   adapter: GPUAdapter;
   device: GPUDevice;
   format: GPUTextureFormat;
 }> {
-  // Stage 1: Check WebGPU support
   if (!navigator.gpu) {
-    throw new Error(
-      "WebGPU is not supported in this browser. " +
-        "Please use Chrome 113+, Edge 113+, or another compatible browser.",
-    );
+    throw new Error("WebGPU not supported");
   }
 
-  // Stage 2: Request adapter
   const adapter = await navigator.gpu.requestAdapter({
     powerPreference: "high-performance",
   });
 
   if (!adapter) {
-    throw new Error(
-      "Failed to get WebGPU adapter. " +
-        "Your GPU may not support WebGPU, or drivers may need updating.",
-    );
+    throw new Error("No WebGPU adapter found");
   }
 
-  // Log adapter information for debugging
-  console.log("Adapter Features:", Array.from(adapter.features));
-  console.log("Adapter Limits:", adapter.limits);
-
-  // Stage 3: Request device with desired features
   const requiredFeatures: GPUFeatureName[] = [];
-
-  // Optionally request features if available
   if (adapter.features.has("texture-compression-bc")) {
     requiredFeatures.push("texture-compression-bc");
   }
@@ -205,71 +174,28 @@ async function initializeWebGPU(): Promise<{
     },
   });
 
-  // Configure device lost handler
   device.lost.then((info) => {
-    console.error(`WebGPU device lost: ${info.message}`);
-    console.error(`Reason: ${info.reason}`);
-
-    // Attempt recovery if not explicitly destroyed
+    console.error(`Device lost: ${info.message}`);
     if (info.reason !== "destroyed") {
-      initializeWebGPU().catch(console.error);
+      initializeWebGPU();
     }
   });
 
-  // Set up uncaptured error handler
   device.addEventListener("uncapturederror", (event) => {
-    console.error("Uncaptured WebGPU error:", event.error);
+    console.error("Uncaptured error:", event.error);
   });
 
-  // Get preferred canvas format for rendering
   const format = navigator.gpu.getPreferredCanvasFormat();
 
   return { adapter, device, format };
 }
-
-// Usage
-try {
-  const { adapter, device, format } = await initializeWebGPU();
-  console.log("WebGPU initialized successfully");
-  // Proceed with application setup
-} catch (error) {
-  console.error("WebGPU initialization failed:", error);
-  // Fall back to WebGL or display error message to user
-}
 ```
 
-This initialization pattern includes several best practices:
+## Stateless Pipeline Architecture
 
-- **Progressive checks**: Verify support at each stage before proceeding
-- **Graceful error messages**: Provide actionable feedback when initialization fails
-- **Device lost recovery**: Automatically attempt reinitialization on unexpected device loss
-- **Error monitoring**: Set up handlers for uncaptured errors
-- **Feature negotiation**: Request optional features without failing if unavailable
-- **Canvas format query**: Use the platform's preferred format for optimal performance
+WebGPU uses an explicit, immutable pipeline object model. Unlike WebGL's state machine where you configure global state incrementally, WebGPU pipelines encapsulate complete GPU state at creation time.
 
-## The Stateless Architecture
-
-One of the most significant departures from WebGL is WebGPU's **stateless architecture**. WebGL inherited OpenGL's state machine model, where the API maintains extensive global state that subsequent calls implicitly reference. Setting up a draw call in WebGL might involve dozens of state-setting calls (`gl.bindBuffer()`, `gl.enableVertexAttribArray()`, `gl.useProgram()`, etc.), and the order of these calls matters immensely because each modifies shared global state.
-
-WebGPU instead embraces an **explicit, immutable pipeline object** model similar to modern native APIs:
-
-**WebGL's Stateful Approach**:
-
-```javascript
-// WebGL: Global state machine
-gl.useProgram(program);
-gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-gl.enableVertexAttribArray(0);
-gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
-// State persists until explicitly changed
-```
-
-**WebGPU's Stateless Approach**:
-
-```typescript
-// WebGPU: Explicit pipeline objects
+```typescript title="Creating and using a render pipeline"
 const pipeline = device.createRenderPipeline({
   layout: pipelineLayout,
   vertex: {
@@ -283,397 +209,160 @@ const pipeline = device.createRenderPipeline({
     targets: [{ format: "bgra8unorm" }],
   },
   primitive: { topology: "triangle-list" },
-  depthStencil: {
-    /* ... */
-  },
 });
 
 // In render pass
 passEncoder.setPipeline(pipeline);
 passEncoder.setVertexBuffer(0, vertexBuffer);
-passEncoder.setIndexBuffer(indexBuffer, "uint16");
 passEncoder.setBindGroup(0, bindGroup);
 passEncoder.drawIndexed(36);
 ```
 
-The advantages of this stateless design are substantial:
+:::tip[Pipeline Benefits]
+This architecture provides:
+- **Upfront validation** — State validated once at creation, not per-draw
+- **Parallelism** — Pipelines can be created on multiple threads
+- **Predictability** — No hidden state; each pipeline is self-contained
+- **Performance** — Drivers optimize aggressively with complete state visibility
+:::
 
-**1. Explicit Validation**: All pipeline state is validated once at creation time, not repeatedly at draw time. The driver can compile optimal code paths for the specific combination of shaders, formats, and state.
-
-**2. Parallelism**: Multiple pipeline objects can be created in parallel without interference, and command encoding can happen on multiple threads (when using Workers).
-
-**3. Predictability**: There's no hidden state. Every pipeline object is self-contained and immutable. You can't accidentally inherit state from previous operations.
-
-**4. Performance**: Drivers can optimize aggressively because they see the complete picture at pipeline creation, not incrementally at draw time. This eliminates a major source of CPU overhead in WebGL.
-
-**5. Error Reduction**: Many common WebGL bugs stem from incorrect state ordering or forgotten state resets. WebGPU's model makes these errors impossible by construction.
-
-This philosophical shift requires a different mental model: instead of configuring state and issuing draw calls, you create pipeline objects that encapsulate complete GPU state, then use command encoders to record sequences of operations that reference those pipelines.
-
-## Device Features and Limits
-
-Understanding GPU capabilities is crucial for writing portable WebGPU code that works across diverse hardware. WebGPU provides two mechanisms for capability discovery:
+## Features and Limits
 
 ### Features
 
-**Features** are optional capabilities that may or may not be present on a given adapter. They represent discrete functionality that can be toggled on or off. Features are queried from `adapter.features`, which behaves like a Set:
+Optional capabilities checked via `adapter.features`:
 
-```typescript
-const features = adapter.features;
-
-// Common features to check
+```typescript title="Checking optional features"
 const featureChecks = {
   textureCompression: {
-    bc: features.has("texture-compression-bc"),
-    etc2: features.has("texture-compression-etc2"),
-    astc: features.has("texture-compression-astc"),
+    bc: adapter.features.has("texture-compression-bc"),
+    etc2: adapter.features.has("texture-compression-etc2"),
+    astc: adapter.features.has("texture-compression-astc"),
   },
   shaderFeatures: {
-    float16: features.has("shader-f16"),
-  },
-  depth: {
-    clipControl: features.has("depth-clip-control"),
-    depth32float: features.has("depth32float-stencil8"),
-  },
-  indirect: {
-    firstInstance: features.has("indirect-first-instance"),
+    float16: adapter.features.has("shader-f16"),
   },
 };
-
-console.log("Feature support:", featureChecks);
 ```
 
-**Required vs. Optional Features**: When requesting a device, you must explicitly list all features your application needs in `requiredFeatures`. If any feature is unavailable, `requestDevice()` will reject. This forces you to either:
-
-- Detect and adapt to missing features gracefully
-- Provide alternative code paths
-- Clearly communicate minimum requirements to users
-
-```typescript
-// Request with fallback strategy
+```typescript title="Requesting available features"
 async function createDeviceWithFeatures(adapter: GPUAdapter) {
-  const desiredFeatures: GPUFeatureName[] = [
-    "texture-compression-bc",
-    "shader-f16",
-  ];
+  const desired: GPUFeatureName[] = ["texture-compression-bc", "shader-f16"];
+  const available = desired.filter((f) => adapter.features.has(f));
 
-  const availableFeatures = desiredFeatures.filter((f) =>
-    adapter.features.has(f),
-  );
-
-  const device = await adapter.requestDevice({
-    requiredFeatures: availableFeatures,
+  return adapter.requestDevice({
+    requiredFeatures: available,
   });
-
-  // Return info about what's enabled
-  return {
-    device,
-    hasBC: availableFeatures.includes("texture-compression-bc"),
-    hasF16: availableFeatures.includes("shader-f16"),
-  };
 }
 ```
 
 ### Limits
 
-**Limits** are numeric constraints on resources and operations. Every adapter reports supported limits through `adapter.limits`:
+Numeric constraints queried via `adapter.limits`:
 
-```typescript
+```typescript title="Querying device limits"
 const limits = adapter.limits;
-
-console.log("Resource limits:", {
-  maxTextureDimension2D: limits.maxTextureDimension2D, // Often 8192 or 16384
-  maxBufferSize: limits.maxBufferSize, // Maximum buffer size in bytes
-  maxBindGroups: limits.maxBindGroups, // Usually 4
-  maxBindingsPerBindGroup: limits.maxBindingsPerBindGroup,
-  maxStorageBufferBindingSize: limits.maxStorageBufferBindingSize,
+console.log({
+  maxTextureDimension2D: limits.maxTextureDimension2D,
+  maxBufferSize: limits.maxBufferSize,
+  maxBindGroups: limits.maxBindGroups,
   maxComputeWorkgroupSizeX: limits.maxComputeWorkgroupSizeX,
-  maxComputeInvocationsPerWorkgroup: limits.maxComputeInvocationsPerWorkgroup,
 });
 ```
 
-Unlike features, limits have guaranteed minimum values defined by the spec. For example, `maxTextureDimension2D` must be at least 8192. When requesting a device, you can ask for higher limits:
-
-```typescript
-const device = await adapter.requestDevice({
-  requiredLimits: {
-    maxStorageBufferBindingSize: 1024 * 1024 * 1024, // Request 1GB
-  },
-});
-```
-
-If the requested limit exceeds what the adapter supports, the request will fail. Always check adapter limits before requesting higher values:
-
-```typescript
+```typescript title="Requesting higher limits" {1-2}
 const requestedLimit = 1024 * 1024 * 1024;
-const actualLimit = Math.min(
-  requestedLimit,
-  adapter.limits.maxStorageBufferBindingSize,
-);
+const actualLimit = Math.min(requestedLimit, adapter.limits.maxStorageBufferBindingSize);
 
 const device = await adapter.requestDevice({
-  requiredLimits: {
-    maxStorageBufferBindingSize: actualLimit,
-  },
+  requiredLimits: { maxStorageBufferBindingSize: actualLimit },
 });
 ```
 
 ## Resource Lifecycle
 
-Understanding resource lifecycle is essential for efficient WebGPU applications. Resources follow clear patterns from creation through destruction:
+### Creation
 
-### Creation Patterns
+Resources are created through device methods with descriptor objects:
 
-Resources are created through device methods that take descriptor objects:
-
-```typescript
-// Buffer creation
+```typescript title="Creating buffers and textures"
 const vertexBuffer = device.createBuffer({
   size: 1024,
   usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-  mappedAtCreation: false, // Can map immediately for initialization
+  mappedAtCreation: false,
 });
 
-// Texture creation
 const texture = device.createTexture({
   size: { width: 512, height: 512 },
   format: "rgba8unorm",
   usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
 });
-
-// Pipeline creation (more expensive)
-const pipeline = device.createRenderPipeline({
-  // ... comprehensive descriptor
-});
 ```
 
 ### Usage Flags
 
-The `usage` parameter is crucial—it declares how you intend to use the resource. WebGPU validates that actual usage matches declared usage:
+The `usage` parameter declares how resources will be used. WebGPU validates actual usage matches declared usage.
 
-**Buffer Usage Flags**:
+<details>
+<summary>**Buffer Usage Flags**</summary>
 
-- `COPY_SRC` / `COPY_DST`: Source or destination for copy operations
-- `MAP_READ` / `MAP_WRITE`: CPU can map for reading/writing
-- `VERTEX`: Vertex buffer
-- `INDEX`: Index buffer
-- `UNIFORM`: Uniform buffer (read-only in shaders)
-- `STORAGE`: Storage buffer (read-write in shaders)
-- `INDIRECT`: Indirect drawing arguments
-- `QUERY_RESOLVE`: Query result destination
+| Flag | Purpose |
+|------|---------|
+| `COPY_SRC` / `COPY_DST` | Copy operations |
+| `MAP_READ` / `MAP_WRITE` | CPU mapping |
+| `VERTEX` / `INDEX` | Geometry data |
+| `UNIFORM` | Read-only shader constants |
+| `STORAGE` | Read-write shader access |
 
-**Texture Usage Flags**:
+</details>
 
-- `COPY_SRC` / `COPY_DST`: Copy operations
-- `TEXTURE_BINDING`: Bound as texture in shaders
-- `STORAGE_BINDING`: Bound as storage texture
-- `RENDER_ATTACHMENT`: Used as render target
+<details>
+<summary>**Texture Usage Flags**</summary>
 
-Combining flags requires bitwise OR: `GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST`
+| Flag | Purpose |
+|------|---------|
+| `COPY_SRC` / `COPY_DST` | Copy operations |
+| `TEXTURE_BINDING` | Shader sampling |
+| `STORAGE_BINDING` | Shader storage access |
+| `RENDER_ATTACHMENT` | Render target |
 
-### Resource Validity
+</details>
 
-Objects are either **valid** or **invalid**. Most objects remain valid once created unless:
-
-1. The device is lost
-2. The object is explicitly destroyed
-3. The object was created from invalid parent objects (invalidity is "contagious")
-
-Attempting to use invalid objects results in validation errors, but the API won't crash—operations simply fail gracefully.
+Combine flags with bitwise OR: `GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST`
 
 ### Destruction
 
-WebGPU provides explicit destruction for resources:
+Explicitly destroy large resources when done:
 
-```typescript
+```typescript title="Resource cleanup"
 buffer.destroy();
 texture.destroy();
-// pipeline objects don't have destroy() - they're immutable value objects
 ```
 
-After calling `destroy()`, the resource is invalid and its GPU memory can be reclaimed immediately. However, WebGPU also supports **garbage collection**: if you drop all references to a resource without calling `destroy()`, it will eventually be cleaned up by the JavaScript garbage collector.
+:::caution[Memory Management]
+For loops creating many resources, explicit destruction prevents GPU memory accumulation. Always destroy resources you no longer need.
+:::
 
-**Best Practice**: For large resources (buffers, textures), call `destroy()` explicitly when done. For small objects like bind groups, letting GC handle cleanup is often fine.
+### Error Scopes
 
-### Garbage Collection Considerations
+Use error scopes for expected failure points:
 
-Because WebGPU objects are handles to GPU-process resources, their JavaScript memory footprint is small, but their GPU memory footprint may be large. JavaScript's garbage collector can't see GPU memory pressure, so:
-
-```typescript
-// Bad: May accumulate GB of GPU memory before GC runs
-for (let i = 0; i < 1000; i++) {
-  const buffer = device.createBuffer({ size: 1024 * 1024 /* ... */ });
-  // Use buffer briefly
-  // No destroy() call - waiting for GC
-}
-
-// Good: Explicit cleanup
-const buffer = device.createBuffer({ size: 1024 * 1024 /* ... */ });
-// Use buffer
-buffer.destroy(); // Immediate GPU memory reclamation
-```
-
-## Best Practices
-
-### Proper Initialization Patterns
-
-- **Always check navigator.gpu** before attempting WebGPU operations
-- **Handle requestAdapter() returning null** gracefully with fallbacks
-- **Set up device.lost handler** immediately after device creation
-- **Configure uncapturederror listener** for debugging
-- **Query and respect limits** rather than assuming hardware capabilities
-
-### Resource Management
-
-- **Create pipelines during initialization**, not in render loops—they're expensive
-- **Reuse resources** across frames whenever possible
-- **Batch command encoding**: Encode related operations in single command buffers
-- **Destroy large resources explicitly** rather than relying on GC
-- **Use mappedAtCreation: true** for initial buffer data instead of staging buffers
-
-```typescript
-// Efficient pattern for static data
-const buffer = device.createBuffer({
-  size: data.byteLength,
-  usage: GPUBufferUsage.VERTEX,
-  mappedAtCreation: true,
-});
-new Float32Array(buffer.getMappedRange()).set(data);
-buffer.unmap();
-```
-
-### Error Recovery
-
-- **Use error scopes** for expected failure points:
-
-```typescript
+```typescript title="Catching creation errors"
 device.pushErrorScope("validation");
-const buffer = device.createBuffer({
-  /* potentially invalid */
-});
+const buffer = device.createBuffer({ /* potentially invalid */ });
 const error = await device.popErrorScope();
 if (error) {
   console.warn("Buffer creation failed:", error.message);
-  // Handle gracefully
 }
 ```
 
-- **Implement device recovery** after device lost events
-- **Validate adapter support** for required features before creating device
+## GPU Process Architecture
 
-### Feature Detection
+WebGPU runs in a dedicated GPU process separate from the content process where JavaScript executes.
 
-- **Never assume features are present**—always check explicitly
-- **Provide fallback paths** for optional features
-- **Test on lower-end hardware** to catch limit violations
-- **Use getPreferredCanvasFormat()** for canvas rendering
-
-### Performance Optimization
-
-- **Minimize queue.submit() calls**: Batch work into fewer command buffers
-- **Prefer writeBuffer/writeTexture** for small updates over copy operations
-- **Use storage buffers** instead of large numbers of uniforms
-- **Enable bind group caching**: Reuse bind groups when bindings don't change
-
-## Common Pitfalls
-
-### 1. Async Timing Issues
-
-**Problem**: Assuming synchronous behavior in async operations
-
-```typescript
-// Wrong: createShaderModule() returns immediately, compilation happens async
-const module = device.createShaderModule({ code: shaderSource });
-const pipeline = device.createRenderPipeline({
-  /* uses module */
-});
-// Pipeline creation might fail if shader compilation has errors
-```
-
-**Solution**: Use error scopes or await compilation:
-
-```typescript
-const module = device.createShaderModule({ code: shaderSource });
-const compilationInfo = await module.getCompilationInfo();
-if (compilationInfo.messages.some((m) => m.type === "error")) {
-  console.error("Shader compilation failed");
-}
-```
-
-### 2. Device Lost Handling
-
-**Problem**: Not handling device lost events leads to silent failures
-
-```typescript
-// Bad: No device lost handler
-const device = await adapter.requestDevice();
-// Later: Device might be lost, all operations fail silently
-```
-
-**Solution**: Always configure device.lost handler and implement recovery
-
-### 3. Feature Detection Mistakes
-
-**Problem**: Using features without requesting them
-
-```typescript
-// Wrong: Feature not requested
-const device = await adapter.requestDevice(); // No requiredFeatures
-const buffer = device.createBuffer({
-  usage: GPUBufferUsage.VERTEX,
-  format: "bc1-rgba-unorm", // Requires 'texture-compression-bc' feature
-});
-// Fails validation
-```
-
-**Solution**: Request features explicitly in requestDevice()
-
-### 4. Forgetting Usage Flags
-
-**Problem**: Creating resources without proper usage flags
-
-```typescript
-const buffer = device.createBuffer({
-  size: 256,
-  usage: GPUBufferUsage.UNIFORM, // Only UNIFORM specified
-});
-device.queue.writeBuffer(buffer, 0, data); // Fails! Needs COPY_DST
-```
-
-**Solution**: Include all intended usages at creation time
-
-### 5. Validation Error Confusion
-
-**Problem**: Errors propagate asynchronously, making debugging difficult
-
-**Solution**: Use error scopes around suspect operations, enable Chrome's WebGPU error highlighting, and check the console regularly
-
-### 6. Forgetting Browser Support
-
-**Problem**: Deploying without checking actual browser support
-
-**Solution**: Always check navigator.gpu and provide fallbacks or clear error messages
-
-### 7. Resource Leaks
-
-**Problem**: Creating resources in loops without cleanup
-
-**Solution**: Track and destroy resources explicitly, especially in dynamic scenarios
-
-## Related Topics
-
-For deeper exploration of WebGPU concepts, see these related documentation pages:
-
-- **WebGPU Shader Programming (WGSL)**: Shader language syntax, built-in functions, compute shaders
-- **WebGPU Rendering Pipeline**: Vertex processing, rasterization, fragment shading, render passes
-- **WebGPU Compute Operations**: Parallel computing, workgroups, storage buffers, compute pipelines
-- **WebGPU Memory Management**: Buffer mapping, staging strategies, memory alignment, texture uploads
-- **WebGPU Texture Operations**: Texture formats, sampling, mipmaps, compressed textures
-- **WebGPU Bind Groups**: Resource binding model, bind group layouts, descriptor sets
-- **WebGPU Performance Optimization**: Profiling techniques, bottleneck identification, optimization strategies
-- **WebGPU Error Handling**: Error scopes, validation layers, debugging techniques
-- **Migration from WebGL to WebGPU**: Key differences, porting strategies, compatibility considerations
-
----
-
-This documentation covers the foundational concepts necessary to understand and work effectively with WebGPU. The architecture's emphasis on explicitness, modern GPU design alignment, and security make it a powerful platform for both graphics and compute workloads on the web. By understanding these core concepts—adapters, devices, queues, stateless pipelines, and resource lifecycle—you're equipped to build high-performance GPU-accelerated web applications.
+:::note[Architecture Implications]
+- **Object Handles** — JavaScript objects like GPUDevice and GPUBuffer are lightweight proxies to objects in the GPU process
+- **Asynchronous Operations** — Cross-process communication makes most operations inherently asynchronous
+- **Security Boundary** — The GPU process sandbox contains potential exploits
+- **Privacy Protection** — Adapter capability binning limits fingerprinting to 32 unique configurations
+:::
