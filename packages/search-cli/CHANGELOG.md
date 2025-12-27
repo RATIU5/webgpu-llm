@@ -1,5 +1,11 @@
 # @ratiu5/starlight-search-cli
 
+## 0.0.5
+
+### Patch Changes
+
+- b15bf90: Updated the Search result type llmxTxt to be string only not null
+
 ## 0.0.4
 
 ### Patch Changes
