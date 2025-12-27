@@ -10,10 +10,20 @@ const getPackageVersion = Effect.gen(function* () {
   const path = yield* Path.Path;
   const modulePath = yield* path.fromFileUrl(new URL(import.meta.url));
   const moduleDir = path.dirname(modulePath);
-  const packageJsonPath = path.join(moduleDir, "..", "package.json");
-  const content = yield* fs.readFileString(packageJsonPath);
-  const pkg = JSON.parse(content) as { version: string };
-  return pkg.version;
+
+  const tryReadVersion = (filePath: string) =>
+    fs.readFileString(filePath).pipe(
+      Effect.map((content) => JSON.parse(content) as { version: string }),
+      Effect.map((pkg) => pkg.version),
+    );
+
+  const sameDir = path.join(moduleDir, "package.json");
+  const parentDir = path.join(moduleDir, "..", "package.json");
+
+  return yield* tryReadVersion(sameDir).pipe(
+    Effect.orElse(() => tryReadVersion(parentDir)),
+    Effect.orElse(() => Effect.succeed("0.0.0")),
+  );
 });
 
 const command = Command.make("sls");
