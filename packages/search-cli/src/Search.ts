@@ -12,7 +12,7 @@ export const SearchResult = Schema.Struct({
   title: Schema.String,
   excerpt: Schema.String,
   score: Schema.Number,
-  llmsTxt: Schema.String,
+  llmsTxt: Schema.NullOr(Schema.String),
 });
 
 export const SearchResponse = Schema.Struct({
@@ -20,8 +20,15 @@ export const SearchResponse = Schema.Struct({
   totalResults: Schema.Number,
 });
 
+export const ApiErrorResponse = Schema.Struct({
+  error: Schema.String,
+  details: Schema.optional(Schema.String),
+  retryAfter: Schema.optional(Schema.Number),
+});
+
 export type SearchResult = typeof SearchResult.Type;
 export type SearchResponse = typeof SearchResponse.Type;
+export type ApiErrorResponse = typeof ApiErrorResponse.Type;
 
 export class SearchRequestError extends Data.TaggedError("SearchRequestError")<{
   readonly cause: HttpClientError.HttpClientError | HttpBody.HttpBodyError;
@@ -31,7 +38,16 @@ export class SearchParseError extends Data.TaggedError("SearchParseError")<{
   readonly cause: ParseResult.ParseError | HttpClientError.ResponseError;
 }> {}
 
-export type SearchError = SearchRequestError | SearchParseError;
+export class SearchApiError extends Data.TaggedError("SearchApiError")<{
+  readonly error: string;
+  readonly details?: string | undefined;
+  readonly retryAfter?: number | undefined;
+}> {}
+
+export type SearchError =
+  | SearchRequestError
+  | SearchParseError
+  | SearchApiError;
 
 export class SearchClient extends Context.Tag("SearchClient")<
   SearchClient,
@@ -52,12 +68,30 @@ export const SearchClientLive = Layer.effect(
           HttpClientRequest.bodyJson({ query }),
           Effect.flatMap(client.execute),
           Effect.mapError((e) => new SearchRequestError({ cause: e })),
-          Effect.flatMap(HttpClientResponse.schemaBodyJson(SearchResponse)),
-          Effect.mapError((e) =>
-            e instanceof SearchRequestError
-              ? e
-              : new SearchParseError({ cause: e }),
+          Effect.flatMap((response) =>
+            Effect.gen(function* () {
+              if (response.status >= 400) {
+                const errorBody =
+                  yield* HttpClientResponse.schemaBodyJson(ApiErrorResponse)(
+                    response,
+                  );
+                return yield* new SearchApiError(errorBody);
+              }
+              return yield* HttpClientResponse.schemaBodyJson(SearchResponse)(
+                response,
+              );
+            }),
           ),
+          Effect.mapError((e) => {
+            switch (e._tag) {
+              case "ParseError":
+              case "ResponseError":
+                return new SearchParseError({ cause: e });
+              case "SearchRequestError":
+              case "SearchApiError":
+                return e;
+            }
+          }),
         ),
     };
   }),
