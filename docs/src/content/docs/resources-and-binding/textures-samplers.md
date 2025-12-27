@@ -422,6 +422,89 @@ for (let mipLevel = 0; mipLevel < mipLevelCount; mipLevel++) {
 WebGPU doesn't provide built-in mipmap generation. Use compute shaders or render passes to downsample.
 :::
 
+### Generating Mipmaps
+
+Unlike WebGL's `generateMipmap()`, WebGPU requires manual mipmap generation.
+
+<details>
+<summary>**Render Pass Approach**</summary>
+
+Draw textured quads from each level to the next:
+
+```javascript title="Mipmap generation with render passes"
+const mipmapPipeline = device.createRenderPipeline({
+  layout: "auto",
+  vertex: { module: blitShaderModule, entryPoint: "vertexMain" },
+  fragment: {
+    module: blitShaderModule,
+    entryPoint: "fragmentMain",
+    targets: [{ format: "rgba8unorm" }],
+  },
+});
+
+for (let level = 1; level < mipLevelCount; level++) {
+  const srcView = texture.createView({
+    baseMipLevel: level - 1,
+    mipLevelCount: 1,
+  });
+  const dstView = texture.createView({
+    baseMipLevel: level,
+    mipLevelCount: 1,
+  });
+
+  const bindGroup = device.createBindGroup({
+    layout: mipmapPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: linearSampler },
+      { binding: 1, resource: srcView },
+    ],
+  });
+
+  const pass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view: dstView,
+      loadOp: "clear",
+      storeOp: "store",
+    }],
+  });
+  pass.setPipeline(mipmapPipeline);
+  pass.setBindGroup(0, bindGroup);
+  pass.draw(6);
+  pass.end();
+}
+```
+
+</details>
+
+<details>
+<summary>**Compute Shader Approach**</summary>
+
+Faster for large textures—process 4 source texels to 1 destination:
+
+```wgsl title="Mipmap compute shader"
+@group(0) @binding(0) var srcTexture: texture_2d<f32>;
+@group(0) @binding(1) var dstTexture: texture_storage_2d<rgba8unorm, write>;
+
+@compute @workgroup_size(8, 8)
+fn generateMip(@builtin(global_invocation_id) id: vec3u) {
+  let dstCoord = id.xy;
+  let srcCoord = dstCoord * 2u;
+
+  // Average 4 source texels
+  let tl = textureLoad(srcTexture, srcCoord, 0);
+  let tr = textureLoad(srcTexture, srcCoord + vec2u(1, 0), 0);
+  let bl = textureLoad(srcTexture, srcCoord + vec2u(0, 1), 0);
+  let br = textureLoad(srcTexture, srcCoord + vec2u(1, 1), 0);
+
+  let avg = (tl + tr + bl + br) * 0.25;
+  textureStore(dstTexture, dstCoord, avg);
+}
+```
+
+Requires texture with both `TEXTURE_BINDING` and `STORAGE_BINDING` usage.
+
+</details>
+
 ## Sampling in Shaders
 
 ### textureSample
@@ -556,27 +639,59 @@ function getSpriteUVs(spriteIndex, atlasLayout) {
 
 ## Depth Textures
 
-For shadow mapping and depth-based effects:
+### Depth Formats
 
-```javascript title="Create depth texture"
+| Format | Bits | Shader Access | Use Case |
+|--------|------|---------------|----------|
+| `depth24plus` | ≥24 | No | Standard depth buffer |
+| `depth32float` | 32 | Yes | Shadow mapping, effects |
+| `depth24plus-stencil8` | 24+8 | No | Depth + stencil |
+| `depth32float-stencil8` | 32+8 | Depth only | Depth access + stencil |
+
+:::tip[Format Selection]
+Use `depth24plus` for render-only depth buffers. Use `depth32float` when you need to sample depth in shaders.
+:::
+
+### Creating Depth Textures
+
+```javascript title="Shader-accessible depth texture"
 const depthTexture = device.createTexture({
   size: [canvas.width, canvas.height],
-  format: "depth32float", // Shader-accessible
+  format: "depth32float",
   usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
 });
 ```
 
-:::danger[Comparison Samplers]
-Depth textures require comparison samplers:
+### Shadow Mapping
 
-```wgsl
-@group(0) @binding(0) var depthSampler: sampler_comparison;
-@group(0) @binding(1) var depthTex: texture_depth_2d;
+<details>
+<summary>**1. Shadow Map Creation**</summary>
 
-// Use textureSampleCompare, not textureSample
-let shadow = textureSampleCompare(depthTex, depthSampler, uv, compareValue);
+Render scene depth from light's perspective:
+
+```javascript title="Shadow map texture"
+const shadowMap = device.createTexture({
+  size: [1024, 1024],
+  format: "depth32float",
+  usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+});
+
+// Render pass for shadow map
+const shadowPass = encoder.beginRenderPass({
+  colorAttachments: [],  // Depth only, no color
+  depthStencilAttachment: {
+    view: shadowMap.createView(),
+    depthLoadOp: "clear",
+    depthStoreOp: "store",
+    depthClearValue: 1.0,
+  },
+});
 ```
-:::
+
+</details>
+
+<details>
+<summary>**2. Comparison Sampler**</summary>
 
 ```javascript title="Create comparison sampler"
 const shadowSampler = device.createSampler({
@@ -584,6 +699,77 @@ const shadowSampler = device.createSampler({
   magFilter: "linear",
   minFilter: "linear",
 });
+```
+
+:::danger[Comparison Samplers]
+Depth textures require `sampler_comparison` and `textureSampleCompare()`:
+
+```wgsl
+@group(0) @binding(0) var shadowSampler: sampler_comparison;
+@group(0) @binding(1) var shadowMap: texture_depth_2d;
+
+// Returns 0.0 (in shadow) or 1.0 (lit)
+let shadow = textureSampleCompare(shadowMap, shadowSampler, uv, depth);
+```
+:::
+
+</details>
+
+<details>
+<summary>**3. Shadow Sampling Shader**</summary>
+
+```wgsl title="Shadow mapping fragment shader"
+@group(0) @binding(0) var shadowSampler: sampler_comparison;
+@group(0) @binding(1) var shadowMap: texture_depth_2d;
+@group(0) @binding(2) var<uniform> lightViewProj: mat4x4f;
+
+@fragment
+fn main(
+  @location(0) worldPos: vec3f,
+  @location(1) normal: vec3f
+) -> @location(0) vec4f {
+  // Transform to light space
+  let lightSpacePos = lightViewProj * vec4f(worldPos, 1.0);
+  let projCoords = lightSpacePos.xyz / lightSpacePos.w;
+
+  // Convert to UV space [0,1]
+  let shadowUV = projCoords.xy * 0.5 + 0.5;
+  let currentDepth = projCoords.z;
+
+  // PCF soft shadows (3×3 kernel)
+  var shadow = 0.0;
+  let texelSize = 1.0 / 1024.0;
+  for (var x = -1; x <= 1; x++) {
+    for (var y = -1; y <= 1; y++) {
+      let offset = vec2f(f32(x), f32(y)) * texelSize;
+      shadow += textureSampleCompare(
+        shadowMap, shadowSampler,
+        shadowUV + offset, currentDepth - 0.005  // Bias
+      );
+    }
+  }
+  shadow /= 9.0;
+
+  let lighting = max(dot(normal, lightDir), 0.0) * shadow;
+  return vec4f(baseColor * lighting, 1.0);
+}
+```
+
+</details>
+
+### Reading Depth Without Comparison
+
+For post-processing effects that need raw depth values:
+
+```wgsl title="Read raw depth values"
+@group(0) @binding(0) var depthTex: texture_depth_2d;
+
+@fragment
+fn main(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
+  let depth = textureLoad(depthTex, vec2i(fragCoord.xy), 0);
+  // depth is in [0, 1] range (0 = near, 1 = far)
+  return vec4f(depth, depth, depth, 1.0);
+}
 ```
 
 ## Resource Cleanup
