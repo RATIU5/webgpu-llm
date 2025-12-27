@@ -36,3 +36,5 @@ pnpm-debug.log*
 # IDE
 *.code-workspace
 .idea/
+
+.vercel/output
