@@ -252,8 +252,7 @@ export default defineConfig({
             },
             {
               label: "Multisampling (MSAA)",
-              description:
-                "Anti-aliasing with multisample render targets",
+              description: "Anti-aliasing with multisample render targets",
               paths: ["resources-and-binding/multisampling-msaa"],
             },
             {
