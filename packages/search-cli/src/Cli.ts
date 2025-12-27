@@ -47,6 +47,15 @@ const searchCommand = Command.make(
         SearchClientLive.pipe(Layer.provide(makeApiClientLive(domain))),
       ),
       Effect.catchTags({
+        SearchApiError: (e) => {
+          const msg = e.details ? `${e.error}: ${e.details}` : e.error;
+          const retryMsg = e.retryAfter
+            ? ` (retry after ${e.retryAfter}s)`
+            : "";
+          return Effect.logError(`API Error: ${msg}${retryMsg}`).pipe(
+            Effect.andThen(Effect.void),
+          );
+        },
         SearchParseError: (e) =>
           Effect.logError(e.cause).pipe(Effect.andThen(Effect.void)),
         SearchRequestError: (e) =>
