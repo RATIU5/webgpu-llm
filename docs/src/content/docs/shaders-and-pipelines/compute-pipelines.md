@@ -148,6 +148,59 @@ fn process(@builtin(global_invocation_id) id: vec3<u32>) {
 ```
 :::
 
+### Dispatch Strategies
+
+**Multi-pass for cross-workgroup dependencies:**
+
+When results from one workgroup affect another, use separate dispatches:
+
+```javascript title="Multi-pass reduction"
+// Pass 1: Partial sums within workgroups
+pass1.dispatchWorkgroups(Math.ceil(dataSize / 256));
+pass1.end();
+
+// Pass 2: Final reduction of partial results
+const pass2 = encoder.beginComputePass();
+pass2.setPipeline(reductionPipeline);
+pass2.setBindGroup(0, partialResultsBindGroup);
+pass2.dispatchWorkgroups(1);  // Single workgroup for final sum
+pass2.end();
+```
+
+**Indirect dispatch for GPU-driven workloads:**
+
+Let the GPU determine dispatch size:
+
+```javascript title="GPU-driven dispatch"
+// Buffer holds dispatch dimensions (3 × u32)
+const indirectBuffer = device.createBuffer({
+  size: 12,
+  usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+});
+
+// Compute shader writes workgroup counts
+// Then dispatch using those counts
+pass.dispatchWorkgroupsIndirect(indirectBuffer, 0);
+```
+
+```wgsl title="Write dispatch args in shader"
+struct DispatchArgs {
+  x: u32,
+  y: u32,
+  z: u32,
+}
+
+@group(0) @binding(0) var<storage, read_write> dispatch: DispatchArgs;
+@group(0) @binding(1) var<storage, read> activeCount: u32;
+
+@compute @workgroup_size(1)
+fn prepareDispatch() {
+  dispatch.x = (activeCount + 63u) / 64u;  // Workgroups needed
+  dispatch.y = 1u;
+  dispatch.z = 1u;
+}
+```
+
 ## Creating Compute Pipelines
 
 ### GPUComputePipeline
@@ -324,6 +377,10 @@ fn process(
 }
 ```
 
+:::tip[Learn More]
+See [Workgroup Variables](/advanced/workgroup-variables/) for advanced patterns: parallel reductions, prefix sums, and histogram computation.
+:::
+
 ## Synchronization
 
 ### workgroupBarrier()
@@ -345,6 +402,42 @@ fn compute(@builtin(local_invocation_id) local_id: vec3<u32>) {
   let sum = data[0] + data[local_id.x];
 }
 ```
+
+### storageBarrier()
+
+Ensures all storage buffer writes within a workgroup are visible before proceeding:
+
+```wgsl title="Storage barrier"
+@group(0) @binding(0) var<storage, read_write> buffer: array<f32>;
+
+@compute @workgroup_size(64)
+fn compute(@builtin(global_invocation_id) id: vec3<u32>) {
+  // Write to storage buffer
+  buffer[id.x] = computeValue(id.x);
+
+  // Ensure writes are visible within workgroup
+  storageBarrier();
+
+  // Now reads see updated values (within same workgroup)
+  let neighbor = buffer[id.x + 1u];
+}
+```
+
+:::danger[Workgroup Scope Only]
+Both `workgroupBarrier()` and `storageBarrier()` only synchronize invocations **within the same workgroup**. They cannot synchronize across different workgroups.
+
+For cross-workgroup synchronization:
+- Use multiple dispatch calls (separate passes)
+- Use atomics for coordination
+:::
+
+### Barrier Comparison
+
+| Barrier | Scope | Memory Affected |
+|---------|-------|-----------------|
+| `workgroupBarrier()` | Workgroup | `var<workgroup>` |
+| `storageBarrier()` | Workgroup | `var<storage>` |
+| `textureBarrier()` | Workgroup | Storage textures |
 
 :::danger[Race Conditions]
 Without barriers, some threads may read before others have written:

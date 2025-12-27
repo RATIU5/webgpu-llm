@@ -236,6 +236,123 @@ class PerformanceTracker {
 4. **Statistical analysis**: Single measurements can be misleading due to variance
 :::
 
+## Occlusion Queries
+
+Occlusion queries count how many fragment samples pass depth/stencil tests, enabling visibility-based optimizations.
+
+### Setup
+
+```javascript title="Create occlusion query set"
+const occlusionQuerySet = device.createQuerySet({
+  type: "occlusion",
+  count: 32,  // Number of queries available
+  label: "occlusion-queries",
+});
+```
+
+### Usage in Render Pass
+
+```javascript title="Occlusion query in render pass" {3,10,15}
+const renderPassDescriptor = {
+  colorAttachments: [{ /* ... */ }],
+  occlusionQuerySet: occlusionQuerySet,  // Attach query set
+};
+
+const pass = commandEncoder.beginRenderPass(renderPassDescriptor);
+pass.setPipeline(pipeline);
+
+// Query 0: Check if bounding box is visible
+pass.beginOcclusionQuery(0);
+pass.setVertexBuffer(0, boundingBoxBuffer);
+pass.draw(36);  // Draw bounding box
+pass.endOcclusionQuery();
+
+// Query 1: Check another object
+pass.beginOcclusionQuery(1);
+pass.setVertexBuffer(0, anotherBoundingBox);
+pass.draw(36);
+pass.endOcclusionQuery();
+
+pass.end();
+```
+
+### Reading Results
+
+```javascript title="Read occlusion query results" {9-10}
+// Resolve queries to buffer
+const queryBuffer = device.createBuffer({
+  size: 32 * 8,  // 32 queries × 8 bytes (u64)
+  usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
+});
+
+commandEncoder.resolveQuerySet(occlusionQuerySet, 0, 32, queryBuffer, 0);
+
+// Copy to mappable buffer and read
+// Results are sample counts (0 = fully occluded)
+await resultBuffer.mapAsync(GPUMapMode.READ);
+const results = new BigUint64Array(resultBuffer.getMappedRange());
+
+for (let i = 0; i < 32; i++) {
+  if (results[i] === 0n) {
+    console.log(`Object ${i} is fully occluded`);
+  }
+}
+resultBuffer.unmap();
+```
+
+### Visibility Culling Pattern
+
+```javascript title="Two-pass occlusion culling"
+// Pass 1: Render bounding boxes with occlusion queries
+const occlusionPass = encoder.beginRenderPass({
+  colorAttachments: [{ loadOp: "load", storeOp: "store", view }],
+  depthStencilAttachment: { /* depth buffer from previous frame */ },
+  occlusionQuerySet,
+});
+
+for (let i = 0; i < objects.length; i++) {
+  occlusionPass.beginOcclusionQuery(i);
+  drawBoundingBox(occlusionPass, objects[i]);
+  occlusionPass.endOcclusionQuery();
+}
+occlusionPass.end();
+
+// Resolve and read queries
+encoder.resolveQuerySet(occlusionQuerySet, 0, objects.length, queryBuffer, 0);
+device.queue.submit([encoder.finish()]);
+
+// Wait for results
+await device.queue.onSubmittedWorkDone();
+await resultBuffer.mapAsync(GPUMapMode.READ);
+const visibility = new BigUint64Array(resultBuffer.getMappedRange());
+
+// Pass 2: Only render visible objects
+const renderEncoder = device.createCommandEncoder();
+const renderPass = renderEncoder.beginRenderPass(renderDescriptor);
+
+for (let i = 0; i < objects.length; i++) {
+  if (visibility[i] > 0n) {
+    drawFullObject(renderPass, objects[i]);
+  }
+}
+renderPass.end();
+device.queue.submit([renderEncoder.finish()]);
+resultBuffer.unmap();
+```
+
+:::caution[Latency Considerations]
+Occlusion query results aren't available until the GPU finishes. Reading results introduces CPU-GPU synchronization. For real-time rendering, use results from the previous frame to avoid stalls.
+:::
+
+### Use Cases
+
+| Application | Technique |
+|-------------|-----------|
+| **LOD selection** | Use sample count to estimate screen coverage |
+| **Culling** | Skip objects with 0 visible samples |
+| **Portal rendering** | Only render rooms visible through portals |
+| **Lens flare** | Fade based on sun visibility |
+
 ## Browser Developer Tools
 
 ### Chrome GPU Profiling

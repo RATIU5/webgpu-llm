@@ -184,14 +184,48 @@ device.lost.then((info) => {
 
 The `reason` is either `'destroyed'` (explicit) or `'unknown'` (system failure).
 
-### Recovery Pattern
+### Recovery Strategies
 
-```javascript title="Complete recovery pattern"
+**1. Minimal Recovery** — Display a message and suggest page refresh:
+
+```javascript title="Simple recovery"
+device.lost.then((info) => {
+  if (info.reason !== "destroyed") {
+    document.getElementById("gpu-canvas").innerHTML =
+      '<p>GPU disconnected. <a href="">Reload page</a></p>';
+  }
+});
+```
+
+**2. Automatic Restart** — Reinitialize WebGPU without full page reload:
+
+```javascript title="Automatic restart" {10-11}
+async function initWebGPU() {
+  // Always request fresh adapter—cached ones may be invalid
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) throw new Error("No adapter available");
+
+  const device = await adapter.requestDevice();
+
+  device.lost.then((info) => {
+    console.warn("Device lost:", info.reason, info.message);
+    if (info.reason !== "destroyed") {
+      initWebGPU();  // Restart WebGPU
+    }
+  });
+
+  // Continue with initialization...
+}
+```
+
+**3. State Preservation** — Save and restore user state:
+
+```javascript title="State-preserving recovery"
 class WebGPUApp {
   constructor() {
     this.adapter = null;
     this.device = null;
-    this.resources = new Map();
+    this.state = {};  // Serializable application state
   }
 
   async initialize() {
@@ -216,15 +250,30 @@ class WebGPUApp {
   }
 
   async handleDeviceLost() {
-    this.resources.clear();
+    // Save state before cleanup
+    this.saveState();
 
     try {
+      // Request fresh adapter (don't reuse cached)
+      this.adapter = await navigator.gpu.requestAdapter();
       await this.initializeDevice();
       await this.recreateResources();
+      this.restoreState();
       this.resume();
     } catch (error) {
       console.error("Recovery failed:", error);
+      this.showFallbackUI();
     }
+  }
+
+  saveState() {
+    // Sync GPU data to JavaScript before loss
+    localStorage.setItem("app-state", JSON.stringify(this.state));
+  }
+
+  restoreState() {
+    const saved = localStorage.getItem("app-state");
+    if (saved) this.state = JSON.parse(saved);
   }
 
   async recreateResources() {
@@ -233,6 +282,213 @@ class WebGPUApp {
 
   resume() {
     // Resume rendering
+  }
+}
+```
+
+### Testing Device Loss
+
+```javascript title="Simulate device loss"
+let simulatedLoss = false;
+
+device.lost.then((info) => {
+  if (info.reason === "unknown" || simulatedLoss) {
+    simulatedLoss = false;
+    handleDeviceLoss();
+  }
+});
+
+// Trigger simulated loss
+function testDeviceLoss() {
+  simulatedLoss = true;
+  device.destroy();
+}
+```
+
+:::tip[Chrome GPU Process Crash]
+For more realistic testing, navigate to `about:gpucrash` in a separate tab. This kills the GPU process, affecting all WebGPU content.
+:::
+
+## Memory Pressure Handling
+
+GPU memory exhaustion can cause allocation failures. Handle proactively:
+
+### Explicit Resource Destruction
+
+```javascript title="Destroy resources explicitly"
+// Don't wait for garbage collection
+function cleanupTemporaryResources(textures, buffers) {
+  for (const texture of textures) {
+    texture.destroy();
+  }
+  for (const buffer of buffers) {
+    buffer.destroy();
+  }
+}
+
+// Call after each frame for temporary resources
+cleanupTemporaryResources(frameTextures, frameBuffers);
+```
+
+:::danger[GC Doesn't Know GPU Memory]
+JavaScript's garbage collector runs in the renderer process and doesn't see GPU memory usage. A single `GPUTexture` can hold gigabytes without triggering GC. Always call `.destroy()` explicitly.
+:::
+
+### Fallback Allocation
+
+```javascript title="Graceful texture downscaling" {12-17}
+async function createTextureWithFallback(device, descriptor) {
+  device.pushErrorScope("out-of-memory");
+
+  const texture = device.createTexture(descriptor);
+
+  const error = await device.popErrorScope();
+  if (error) {
+    console.warn("Texture too large, trying half resolution");
+
+    // Retry with smaller size
+    const fallbackDescriptor = {
+      ...descriptor,
+      size: {
+        width: Math.floor(descriptor.size.width / 2),
+        height: Math.floor(descriptor.size.height / 2),
+        depthOrArrayLayers: descriptor.size.depthOrArrayLayers || 1,
+      },
+    };
+
+    return createTextureWithFallback(device, fallbackDescriptor);
+  }
+
+  return texture;
+}
+```
+
+### Memory Budgeting
+
+```javascript title="Track GPU memory usage"
+class GPUMemoryTracker {
+  constructor() {
+    this.allocated = 0;
+    this.budget = 512 * 1024 * 1024;  // 512 MB budget
+  }
+
+  canAllocate(bytes) {
+    return this.allocated + bytes <= this.budget;
+  }
+
+  track(resource, bytes) {
+    this.allocated += bytes;
+    return {
+      resource,
+      release: () => {
+        resource.destroy();
+        this.allocated -= bytes;
+      },
+    };
+  }
+}
+```
+
+## Graceful Degradation
+
+### WebGPU → WebGL Fallback
+
+```javascript title="Progressive fallback" {2-11,14-19}
+async function initGraphics() {
+  // Try WebGPU
+  if (navigator.gpu) {
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (adapter) {
+        const device = await adapter.requestDevice();
+        return { api: "webgpu", device };
+      }
+    } catch (e) {
+      console.warn("WebGPU failed:", e);
+    }
+  }
+
+  // Fall back to WebGL2
+  const canvas = document.getElementById("canvas");
+  const gl = canvas.getContext("webgl2");
+  if (gl) {
+    return { api: "webgl2", gl };
+  }
+
+  // Final fallback
+  return { api: "none", error: "No GPU API available" };
+}
+```
+
+### Feature-Based Degradation
+
+```javascript title="Degrade based on capabilities"
+async function selectQualityLevel(adapter) {
+  const limits = adapter.limits;
+  const features = adapter.features;
+
+  // High quality: all features available
+  if (
+    limits.maxTextureDimension2D >= 8192 &&
+    features.has("texture-compression-bc") &&
+    features.has("timestamp-query")
+  ) {
+    return "high";
+  }
+
+  // Medium quality: basic features
+  if (limits.maxTextureDimension2D >= 4096) {
+    return "medium";
+  }
+
+  // Low quality: minimum spec
+  return "low";
+}
+
+const qualityPresets = {
+  high: { shadowMapSize: 4096, particleCount: 100000 },
+  medium: { shadowMapSize: 2048, particleCount: 10000 },
+  low: { shadowMapSize: 1024, particleCount: 1000 },
+};
+```
+
+### Runtime Quality Adjustment
+
+```javascript title="Adjust quality based on performance"
+class AdaptiveQuality {
+  constructor() {
+    this.frameTimes = [];
+    this.targetFPS = 60;
+    this.currentQuality = 1.0;
+  }
+
+  recordFrame(durationMs) {
+    this.frameTimes.push(durationMs);
+    if (this.frameTimes.length > 60) this.frameTimes.shift();
+  }
+
+  shouldDegrade() {
+    if (this.frameTimes.length < 30) return false;
+    const avgMs = this.frameTimes.reduce((a, b) => a + b) / this.frameTimes.length;
+    return avgMs > 1000 / this.targetFPS * 1.2;  // 20% over budget
+  }
+
+  shouldUpgrade() {
+    if (this.frameTimes.length < 60) return false;
+    const avgMs = this.frameTimes.reduce((a, b) => a + b) / this.frameTimes.length;
+    return avgMs < 1000 / this.targetFPS * 0.7;  // 30% under budget
+  }
+
+  adjust() {
+    if (this.shouldDegrade() && this.currentQuality > 0.25) {
+      this.currentQuality *= 0.9;
+      return "degraded";
+    }
+    if (this.shouldUpgrade() && this.currentQuality < 1.0) {
+      this.currentQuality *= 1.1;
+      return "upgraded";
+    }
+    return "stable";
   }
 }
 ```
